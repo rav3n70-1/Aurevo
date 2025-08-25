@@ -1,4 +1,5 @@
 
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import Navbar from '../components/Navbar'
@@ -10,11 +11,38 @@ import StepCounter from '../components/StepCounter'
 import SleepTracker from '../components/SleepTracker'
 import Pomodoro from '../components/Pomodoro'
 import Flashcards from '../components/Flashcards'
-import { useAppStore } from '../store'
+import { useAppStore, useMoodStore, useWellnessStore, useTaskStore } from '../store'
 
 export default function Dashboard() {
   const { t } = useTranslation()
-  const { darkMode, user, level, xp, shinePoints } = useAppStore()
+  const { darkMode, user, level, xp, shinePoints, isLoading } = useAppStore()
+  const { loadMoodData } = useMoodStore()
+  const { loadWellnessData } = useWellnessStore()
+  const { loadTasks } = useTaskStore()
+
+  // Load user data when component mounts
+  useEffect(() => {
+    if (user) {
+      Promise.all([
+        loadMoodData(),
+        loadWellnessData(),
+        loadTasks()
+      ]).catch(error => {
+        console.error('Error loading dashboard data:', error)
+      })
+    }
+  }, [user, loadMoodData, loadWellnessData, loadTasks])
+
+  if (isLoading) {
+    return (
+      <div className={`h-screen grid place-items-center ${darkMode ? 'bg-gray-900 text-white' : 'bg-slate-50 text-slate-600'}`}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600 mx-auto mb-4"></div>
+          <p>{t('loading')}</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={`min-h-screen transition-colors duration-200 ${
@@ -61,7 +89,7 @@ export default function Dashboard() {
                     Level {level}
                   </div>
                   <div className={`text-lg font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                    {xp} XP
+                    {xp.toLocaleString()} XP
                   </div>
                   <div className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
                     {shinePoints} ✨ Shine Points
@@ -131,13 +159,14 @@ export default function Dashboard() {
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                  { icon: '📝', label: 'Add Task', color: 'blue' },
-                  { icon: '🎯', label: 'Set Goal', color: 'green' },
-                  { icon: '📖', label: 'Study Plan', color: 'purple' },
-                  { icon: '📊', label: 'View Reports', color: 'orange' }
+                  { icon: '📝', label: 'Add Task', color: 'blue', action: () => console.log('Add task') },
+                  { icon: '🎯', label: 'Set Goal', color: 'green', action: () => console.log('Set goal') },
+                  { icon: '📖', label: 'Study Plan', color: 'purple', action: () => console.log('Study plan') },
+                  { icon: '📊', label: 'View Reports', color: 'orange', action: () => console.log('View reports') }
                 ].map((action, index) => (
                   <motion.button
                     key={action.label}
+                    onClick={action.action}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className={`p-4 rounded-xl text-center transition-colors ${
