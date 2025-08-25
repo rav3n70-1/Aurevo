@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { 
   Home, 
   Heart, 
@@ -15,30 +16,61 @@ import {
   Calendar,
   User
 } from 'lucide-react'
-import { useAppStore } from '../store'
+import { useAppStore, useWellnessStore, useMoodStore, useTaskStore } from '../store'
 
 const NAVIGATION_ITEMS = [
-  { id: 'overview', icon: Home, labelKey: 'dashboard', color: 'text-blue-500' },
-  { id: 'mood', icon: Heart, labelKey: 'mood', color: 'text-pink-500' },
-  { id: 'wellness', icon: Activity, labelKey: 'wellness', color: 'text-green-500' },
-  { id: 'study', icon: BookOpen, labelKey: 'study', color: 'text-purple-500' },
-  { id: 'goals', icon: Target, labelKey: 'goals', color: 'text-orange-500' },
-  { id: 'reports', icon: BarChart3, labelKey: 'reports', color: 'text-indigo-500' }
+  { id: 'dashboard', path: '/dashboard', icon: Home, labelKey: 'dashboard', color: 'text-blue-500' },
+  { id: 'mood', path: '/mood', icon: Heart, labelKey: 'mood', color: 'text-pink-500' },
+  { id: 'wellness', path: '/wellness', icon: Activity, labelKey: 'wellness', color: 'text-green-500' },
+  { id: 'study', path: '/study', icon: BookOpen, labelKey: 'study', color: 'text-purple-500' },
+  { id: 'goals', path: '/goals', icon: Target, labelKey: 'goals', color: 'text-orange-500' },
+  { id: 'reports', path: '/reports', icon: BarChart3, labelKey: 'reports', color: 'text-indigo-500' }
 ]
 
 export default function Sidebar() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const location = useLocation()
   const { darkMode, user, level, xp, shinePoints, streaks } = useAppStore()
-  const [activeSection, setActiveSection] = useState('overview')
+  const { waterIntake, dailyWaterGoal, steps, sleepHours } = useWellnessStore()
+  const { moodLogs } = useMoodStore()
+  const { studySessions } = useTaskStore()
+  const [activeSection, setActiveSection] = useState('dashboard')
 
   const xpToNextLevel = 1000 - (xp % 1000)
   const currentLevelProgress = (xp % 1000) / 1000 * 100
 
-  const scrollToSection = (sectionId) => {
-    setActiveSection(sectionId)
-    // In a real app, you'd implement smooth scrolling to sections
-    console.log(`Navigating to ${sectionId}`)
+  // Update active section based on current route
+  useEffect(() => {
+    const currentItem = NAVIGATION_ITEMS.find(item => item.path === location.pathname)
+    if (currentItem) {
+      setActiveSection(currentItem.id)
+    }
+  }, [location.pathname])
+
+  const navigateToPage = (item) => {
+    setActiveSection(item.id)
+    navigate(item.path)
   }
+
+  // Calculate today's metrics
+  const todaysMoodLogged = moodLogs.some(log => {
+    const logDate = new Date(log.timestamp?.toDate?.() || log.timestamp).toDateString()
+    const today = new Date().toDateString()
+    return logDate === today
+  })
+
+  const waterProgress = Math.round((waterIntake / dailyWaterGoal) * 100)
+  
+  const todaysStudyTime = studySessions
+    .filter(session => {
+      const sessionDate = new Date(session.timestamp?.toDate?.() || session.timestamp).toDateString()
+      const today = new Date().toDateString()
+      return sessionDate === today
+    })
+    .reduce((total, session) => total + (session.duration || 0), 0)
+
+  const stepsInK = Math.round(steps / 1000 * 10) / 10
 
   return (
     <aside className={`rounded-2xl shadow-sm border p-6 space-y-6 ${
@@ -114,7 +146,7 @@ export default function Sidebar() {
           return (
             <motion.button
               key={item.id}
-              onClick={() => scrollToSection(item.id)}
+              onClick={() => navigateToPage(item)}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
@@ -178,10 +210,26 @@ export default function Sidebar() {
         
         <div className="space-y-2">
           {[
-            { label: 'Mood Logged', value: '✅', color: 'text-green-500' },
-            { label: 'Water Goal', value: '75%', color: 'text-blue-500' },
-            { label: 'Study Time', value: '2.5h', color: 'text-purple-500' },
-            { label: 'Steps', value: '8.2k', color: 'text-orange-500' }
+            { 
+              label: 'Mood Logged', 
+              value: todaysMoodLogged ? '✅' : '❌', 
+              color: todaysMoodLogged ? 'text-green-500' : 'text-gray-400' 
+            },
+            { 
+              label: 'Water Goal', 
+              value: `${waterProgress}%`, 
+              color: waterProgress >= 100 ? 'text-green-500' : waterProgress >= 50 ? 'text-blue-500' : 'text-gray-400' 
+            },
+            { 
+              label: 'Study Time', 
+              value: `${Math.round(todaysStudyTime / 60 * 10) / 10}h`, 
+              color: todaysStudyTime > 0 ? 'text-purple-500' : 'text-gray-400' 
+            },
+            { 
+              label: 'Steps', 
+              value: stepsInK > 0 ? `${stepsInK}k` : '0', 
+              color: steps >= 10000 ? 'text-green-500' : steps >= 5000 ? 'text-orange-500' : 'text-gray-400' 
+            }
           ].map((stat) => (
             <div key={stat.label} className="flex justify-between items-center">
               <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -202,14 +250,19 @@ export default function Sidebar() {
         <div className="text-center">
           <Trophy className={`mx-auto mb-2 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`} size={24} />
           <h4 className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-            Achievement Unlocked!
+            {todaysMoodLogged && waterProgress >= 50 && todaysStudyTime > 0 ? 'Great Progress!' : 'Keep Going!'}
           </h4>
           <p className={`text-xs mt-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            Consistency Champion
+            {todaysMoodLogged && waterProgress >= 50 && todaysStudyTime > 0 
+              ? 'You\'re crushing your goals today!'
+              : 'Every small step counts towards your goals'
+            }
           </p>
-          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            3-day mood tracking streak
-          </p>
+          {todaysMoodLogged && waterProgress >= 50 && todaysStudyTime > 0 && (
+            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              +25 bonus XP earned!
+            </p>
+          )}
         </div>
       </div>
 

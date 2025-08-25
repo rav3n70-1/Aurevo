@@ -2,89 +2,172 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read and write their own user document
+    // Helper functions for common validations
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isResourceOwner() {
+      return resource.data.userId == request.auth.uid;
+    }
+    
+    function hasValidUserId() {
+      return request.resource.data.keys().hasAll(['userId']) && 
+             request.resource.data.userId is string &&
+             request.resource.data.userId == request.auth.uid;
+    }
+    
+    function hasValidTimestamp() {
+      return request.resource.data.keys().hasAll(['timestamp']) &&
+             request.resource.data.timestamp is timestamp;
+    }
+    
+    function isValidCreate() {
+      return isAuthenticated() && hasValidUserId() && hasValidTimestamp();
+    }
+    
+    function isValidUpdate() {
+      return isAuthenticated() && 
+             isResourceOwner() && 
+             request.resource.data.userId == resource.data.userId;
+    }
+    
+    // Users collection - users can only manage their own profile
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isAuthenticated() && isOwner(userId);
+      allow create: if isAuthenticated() && isOwner(userId);
     }
     
-    // Mood logs - users can only access their own
+    // Mood logs with specific validations
     match /moodLogs/{moodLogId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.mood is int &&
+                       request.resource.data.mood >= 1 && 
+                       request.resource.data.mood <= 5 &&
+                       request.resource.data.intensity is int &&
+                       request.resource.data.intensity >= 1 && 
+                       request.resource.data.intensity <= 5;
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
     }
     
-    // Journal entries - users can only access their own
+    // Journal entries with content validation
     match /journalEntries/{entryId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.content is string &&
+                       request.resource.data.content.size() > 0 &&
+                       request.resource.data.content.size() <= 10000; // Max 10k characters
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
     }
     
-    // Wellness data - users can only access their own
+    // Wellness data with numeric validations
     match /wellnessData/{dataId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.date is string &&
+                       // Validate numeric fields are non-negative
+                       ((!('waterIntake' in request.resource.data)) || request.resource.data.waterIntake >= 0) &&
+                       ((!('calories' in request.resource.data)) || request.resource.data.calories >= 0) &&
+                       ((!('steps' in request.resource.data)) || request.resource.data.steps >= 0) &&
+                       ((!('sleepHours' in request.resource.data)) || request.resource.data.sleepHours >= 0);
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
     }
     
-    // Tasks - users can only access their own
+    // Tasks with status validation
     match /tasks/{taskId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.title is string &&
+                       request.resource.data.title.size() > 0 &&
+                       request.resource.data.status in ['pending', 'in_progress', 'completed', 'cancelled'];
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
     }
     
-    // Goals - users can only access their own
+    // Goals with progress validation
     match /goals/{goalId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.title is string &&
+                       request.resource.data.title.size() > 0 &&
+                       request.resource.data.progress >= 0 &&
+                       request.resource.data.progress <= 100;
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
     }
     
-    // Study sessions - users can only access their own
+    // Study sessions with duration validation
     match /studySessions/{sessionId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.duration is int &&
+                       request.resource.data.duration > 0 &&
+                       request.resource.data.duration <= 480 && // Max 8 hours
+                       request.resource.data.subject is string &&
+                       request.resource.data.subject.size() > 0;
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
     }
     
-    // Flashcards - users can only access their own
+    // Flashcards with content validation
     match /flashcards/{cardId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.question is string &&
+                       request.resource.data.question.size() > 0 &&
+                       request.resource.data.answer is string &&
+                       request.resource.data.answer.size() > 0 &&
+                       request.resource.data.difficulty in ['EASY', 'MEDIUM', 'HARD'];
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
     }
     
-    // Streak data - users can only access their own
+    // Streak data with type validation
     match /streakData/{streakId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.type in ['mood', 'water', 'study', 'exercise', 'meditation', 'reading'] &&
+                       request.resource.data.currentStreak >= 0 &&
+                       request.resource.data.longestStreak >= 0;
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
     }
     
-    // Notifications - users can only access their own
+    // Notifications with type and priority validation
     match /notifications/{notificationId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.title is string &&
+                       request.resource.data.title.size() > 0 &&
+                       request.resource.data.type in ['reminder', 'achievement', 'streak', 'goal', 'system'] &&
+                       request.resource.data.priority in ['low', 'medium', 'high'];
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
     }
     
-    // User progress - users can only access their own
+    // User progress with date validation
     match /userProgress/{progressId} {
-      allow read, write: if request.auth != null && 
-        resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && isResourceOwner();
+      allow create: if isValidCreate() &&
+                       request.resource.data.date is string &&
+                       // Validate XP and shine points are non-negative
+                       ((!('xpEarned' in request.resource.data.dailyStats)) || request.resource.data.dailyStats.xpEarned >= 0) &&
+                       ((!('shinePointsEarned' in request.resource.data.dailyStats)) || request.resource.data.dailyStats.shinePointsEarned >= 0);
+      allow update: if isValidUpdate();
+      allow delete: if isAuthenticated() && isResourceOwner();
+    }
+    
+    // Deny all other requests
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

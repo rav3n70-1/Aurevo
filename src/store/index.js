@@ -237,33 +237,79 @@ export const useMoodStore = create((set, get) => ({
     
     set({ isLoading: true });
     try {
-      const moodQuery = query(
+      console.log('Loading mood data for user:', user.uid);
+      
+      // Try the optimized queries first (requires indexes)
+      let moodQuery = query(
         collection(db, COLLECTIONS.MOOD_LOGS),
         where('userId', '==', user.uid),
         orderBy('timestamp', 'desc'),
-        limit(50)
+        limit(100)
       );
       
-      const journalQuery = query(
+      let journalQuery = query(
         collection(db, COLLECTIONS.JOURNAL_ENTRIES),
         where('userId', '==', user.uid),
         orderBy('timestamp', 'desc'),
         limit(50)
       );
       
-      const [moodSnapshot, journalSnapshot] = await Promise.all([
-        getDocs(moodQuery),
-        getDocs(journalQuery)
-      ]);
+      let moodSnapshot, journalSnapshot;
       
-      const moodLogs = moodSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const journalEntries = journalSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      try {
+        [moodSnapshot, journalSnapshot] = await Promise.all([
+          getDocs(moodQuery),
+          getDocs(journalQuery)
+        ]);
+      } catch (indexError) {
+        console.warn('Mood data indexes not available, falling back to simple queries:', indexError.message);
+        
+        // Fallback to simple queries without orderBy if indexes are missing
+        moodQuery = query(
+          collection(db, COLLECTIONS.MOOD_LOGS),
+          where('userId', '==', user.uid),
+          limit(150)
+        );
+        
+        journalQuery = query(
+          collection(db, COLLECTIONS.JOURNAL_ENTRIES),
+          where('userId', '==', user.uid),
+          limit(75)
+        );
+        
+        [moodSnapshot, journalSnapshot] = await Promise.all([
+          getDocs(moodQuery),
+          getDocs(journalQuery)
+        ]);
+      }
       
+      let moodLogs = moodSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let journalEntries = journalSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Sort by timestamp in JavaScript if we couldn't sort in Firestore
+      moodLogs.sort((a, b) => {
+        const aTime = a.timestamp?.toDate?.() || new Date(a.timestamp);
+        const bTime = b.timestamp?.toDate?.() || new Date(b.timestamp);
+        return bTime - aTime;
+      });
+      
+      journalEntries.sort((a, b) => {
+        const aTime = a.timestamp?.toDate?.() || new Date(a.timestamp);
+        const bTime = b.timestamp?.toDate?.() || new Date(b.timestamp);
+        return bTime - aTime;
+      });
+      
+      console.log('Loaded mood data:', moodLogs.length, 'mood logs,', journalEntries.length, 'journal entries');
       set({ moodLogs, journalEntries });
       
     } catch (error) {
       console.error('Error loading mood data:', error);
-      toast.error('Failed to load mood data');
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      
+      // Provide empty arrays as fallback
+      set({ moodLogs: [], journalEntries: [] });
+      toast.error('Mood data loaded with limited data');
     } finally {
       set({ isLoading: false });
     }
@@ -278,6 +324,7 @@ export const useWellnessStore = create((set, get) => ({
   steps: 0,
   sleepHours: 0,
   isLoading: false,
+  wellnessHistory: [], // array of { date, waterIntake, calories, steps, sleepHours }
   
   setLoading: (isLoading) => set({ isLoading }),
   
@@ -316,7 +363,25 @@ export const useWellnessStore = create((set, get) => ({
         timestamp: new Date()
       };
       
-      await addDoc(collection(db, COLLECTIONS.WELLNESS_DATA), wellnessData);
+      // Check if entry for today already exists
+      const existingQuery = query(
+        collection(db, COLLECTIONS.WELLNESS_DATA),
+        where('userId', '==', user.uid),
+        where('date', '==', today),
+        orderBy('timestamp', 'desc'),
+        limit(1)
+      );
+      
+      const existingSnapshot = await getDocs(existingQuery);
+      
+      if (!existingSnapshot.empty) {
+        // Update existing entry
+        const docId = existingSnapshot.docs[0].id;
+        await updateDoc(doc(db, COLLECTIONS.WELLNESS_DATA, docId), wellnessData);
+      } else {
+        // Create new entry
+        await addDoc(collection(db, COLLECTIONS.WELLNESS_DATA), wellnessData);
+      }
     } catch (error) {
       console.error('Error saving wellness data:', error);
     }
@@ -346,11 +411,149 @@ export const useWellnessStore = create((set, get) => ({
           steps: data.steps || 0,
           sleepHours: data.sleepHours || 0
         });
+      } else {
+        // No data for today, keep current values or reset
+        console.log('No wellness data found for today');
       }
     } catch (error) {
       console.error('Error loading wellness data:', error);
+      toast.error('Failed to load wellness data');
     } finally {
       set({ isLoading: false });
+    }
+  },
+  
+  loadWellnessHistory: async (days = 7) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    set({ isLoading: true });
+    try {
+      console.log('Loading wellness history for user:', user.uid, 'days:', days);
+      
+      // Try the optimized query first (requires index)
+      let q = query(
+        collection(db, COLLECTIONS.WELLNESS_DATA),
+        where('userId', '==', user.uid),
+        orderBy('timestamp', 'desc'),
+        limit(days * 3) // fetch more then trim by last N unique days
+      );
+      
+      let snapshot;
+      try {
+        snapshot = await getDocs(q);
+      } catch (indexError) {
+        console.warn('Composite index not available, falling back to simple query:', indexError.message);
+        
+        // Fallback to simple query without orderBy if index is missing
+        q = query(
+          collection(db, COLLECTIONS.WELLNESS_DATA),
+          where('userId', '==', user.uid),
+          limit(days * 5) // fetch more since we can't sort
+        );
+        snapshot = await getDocs(q);
+      }
+      
+      const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log('Fetched wellness data:', rows.length, 'entries');
+      
+      // Sort by timestamp in JavaScript if we couldn't sort in Firestore
+      rows.sort((a, b) => {
+        const aTime = a.timestamp?.toDate?.() || new Date(a.timestamp);
+        const bTime = b.timestamp?.toDate?.() || new Date(b.timestamp);
+        return bTime - aTime;
+      });
+      
+      // Group by date and take latest per day
+      const byDate = new Map();
+      for (const r of rows) {
+        if (!byDate.has(r.date)) byDate.set(r.date, r);
+      }
+      
+      // Build last N days array, including today
+      const result = [];
+      const today = new Date();
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const key = d.toDateString();
+        const entry = byDate.get(key);
+        
+        // If it's today and no entry exists, use current store values
+        if (i === 0 && !entry) {
+          const { waterIntake, calories, steps, sleepHours } = get();
+          result.push({
+            date: key,
+            waterIntake: waterIntake || 0,
+            calories: calories || 0,
+            steps: steps || 0,
+            sleepHours: sleepHours || 0
+          });
+        } else {
+          result.push({
+            date: key,
+            waterIntake: entry?.waterIntake || 0,
+            calories: entry?.calories || 0,
+            steps: entry?.steps || 0,
+            sleepHours: entry?.sleepHours || 0
+          });
+        }
+      }
+      
+      console.log('Processed wellness history:', result.length, 'days');
+      set({ wellnessHistory: result });
+      
+    } catch (e) {
+      console.error('Error loading wellness history:', e);
+      console.error('Error code:', e.code);
+      console.error('Error message:', e.message);
+      
+      // Provide a fallback empty history instead of failing completely
+      const result = [];
+      const today = new Date();
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const key = d.toDateString();
+        
+        // If it's today, use current store values
+        if (i === 0) {
+          const { waterIntake, calories, steps, sleepHours } = get();
+          result.push({
+            date: key,
+            waterIntake: waterIntake || 0,
+            calories: calories || 0,
+            steps: steps || 0,
+            sleepHours: sleepHours || 0
+          });
+        } else {
+          result.push({
+            date: key,
+            waterIntake: 0,
+            calories: 0,
+            steps: 0,
+            sleepHours: 0
+          });
+        }
+      }
+      
+      set({ wellnessHistory: result });
+      toast.error('Wellness history loaded with limited data');
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  // Initialize wellness data for new users
+  initializeWellnessData: async () => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      await get().loadWellnessData();
+      await get().loadWellnessHistory(14);
+    } catch (error) {
+      console.error('Error initializing wellness data:', error);
     }
   }
 }));
@@ -472,6 +675,62 @@ export const useTaskStore = create((set, get) => ({
     } finally {
       set({ isLoading: false });
     }
+  },
+
+  loadStudySessionsHistory: async (days = 7) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    set({ isLoading: true });
+    try {
+      console.log('Loading study sessions history for user:', user.uid, 'days:', days);
+      
+      // Try the optimized query first (requires index)
+      let q = query(
+        collection(db, COLLECTIONS.STUDY_SESSIONS),
+        where('userId', '==', user.uid),
+        orderBy('timestamp', 'desc'),
+        limit(days * 10)
+      );
+      
+      let snapshot;
+      try {
+        snapshot = await getDocs(q);
+      } catch (indexError) {
+        console.warn('Study sessions index not available, falling back to simple query:', indexError.message);
+        
+        // Fallback to simple query without orderBy if index is missing
+        q = query(
+          collection(db, COLLECTIONS.STUDY_SESSIONS),
+          where('userId', '==', user.uid),
+          limit(days * 15) // fetch more since we can't sort
+        );
+        snapshot = await getDocs(q);
+      }
+      
+      const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log('Fetched study sessions:', rows.length, 'entries');
+      
+      // Sort by timestamp in JavaScript if we couldn't sort in Firestore
+      rows.sort((a, b) => {
+        const aTime = a.timestamp?.toDate?.() || new Date(a.timestamp);
+        const bTime = b.timestamp?.toDate?.() || new Date(b.timestamp);
+        return bTime - aTime;
+      });
+      
+      set({ studySessions: rows });
+      
+    } catch (e) {
+      console.error('Error loading study sessions history:', e);
+      console.error('Error code:', e.code);
+      console.error('Error message:', e.message);
+      
+      // Provide empty array as fallback
+      set({ studySessions: [] });
+      toast.error('Study sessions loaded with limited data');
+    } finally {
+      set({ isLoading: false });
+    }
   }
 }));
 
@@ -487,4 +746,65 @@ useAppStore.subscribe(
       }, 2000);
     }
   }
-); 
+);
+
+// Daily achievement checker
+export const checkDailyAchievements = () => {
+  const appStore = useAppStore.getState();
+  const wellnessStore = useWellnessStore.getState();
+  const moodStore = useMoodStore.getState();
+  const taskStore = useTaskStore.getState();
+  
+  const today = new Date().toDateString();
+  
+  // Check if mood was logged today
+  const moodLoggedToday = moodStore.moodLogs.some(log => {
+    const logDate = new Date(log.timestamp?.toDate?.() || log.timestamp).toDateString();
+    return logDate === today;
+  });
+  
+  // Check water goal achievement
+  const waterGoalMet = wellnessStore.waterIntake >= wellnessStore.dailyWaterGoal;
+  
+  // Check if study session happened today
+  const studiedToday = taskStore.studySessions.some(session => {
+    const sessionDate = new Date(session.timestamp?.toDate?.() || session.timestamp).toDateString();
+    return sessionDate === today;
+  });
+  
+  // Check if user hit step goal
+  const stepGoalMet = wellnessStore.steps >= 10000;
+  
+  // Award bonus XP for daily completions
+  let bonusXP = 0;
+  let achievements = [];
+  
+  if (moodLoggedToday && waterGoalMet && studiedToday) {
+    bonusXP += 25;
+    achievements.push('Daily Triple Crown');
+  }
+  
+  if (moodLoggedToday && waterGoalMet && studiedToday && stepGoalMet) {
+    bonusXP += 50;
+    achievements.push('Perfect Wellness Day');
+  }
+  
+  if (bonusXP > 0) {
+    appStore.addXP(bonusXP);
+    appStore.addShinePoints(Math.floor(bonusXP / 10));
+    
+    // Show achievement notification
+    if (achievements.length > 0) {
+      toast.success(`🏆 ${achievements.join(', ')} achieved! +${bonusXP} XP`);
+    }
+  }
+  
+  return {
+    moodLoggedToday,
+    waterGoalMet,
+    studiedToday,
+    stepGoalMet,
+    bonusXP,
+    achievements
+  };
+}; 
