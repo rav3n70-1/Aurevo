@@ -734,77 +734,69 @@ export const useTaskStore = create((set, get) => ({
   }
 }));
 
-// Auto-sync store data to Firebase
-useAppStore.subscribe(
-  (state) => state.xp,
-  () => {
-    const store = useAppStore.getState();
-    if (store.user && store.userProfile) {
-      // Debounce the sync to avoid too many writes
-      setTimeout(() => {
-        store.syncProfile();
-      }, 2000);
-    }
-  }
-);
+// Auto-sync store data to Firebase (commented out - causing issues)
+// TODO: Implement proper subscription when needed
+// useAppStore.subscribe(
+//   (state) => state.xp,
+//   () => {
+//     const store = useAppStore.getState();
+//     if (store.user && store.userProfile) {
+//       // Debounce the sync to avoid too many writes
+//       setTimeout(() => {
+//         store.syncProfile();
+//       }, 2000);
+//     }
+//   }
+// );
 
-// Daily achievement checker
-export const checkDailyAchievements = () => {
-  const appStore = useAppStore.getState();
-  const wellnessStore = useWellnessStore.getState();
-  const moodStore = useMoodStore.getState();
-  const taskStore = useTaskStore.getState();
-  
-  const today = new Date().toDateString();
-  
-  // Check if mood was logged today
-  const moodLoggedToday = moodStore.moodLogs.some(log => {
-    const logDate = new Date(log.timestamp?.toDate?.() || log.timestamp).toDateString();
-    return logDate === today;
-  });
-  
-  // Check water goal achievement
-  const waterGoalMet = wellnessStore.waterIntake >= wellnessStore.dailyWaterGoal;
-  
-  // Check if study session happened today
-  const studiedToday = taskStore.studySessions.some(session => {
-    const sessionDate = new Date(session.timestamp?.toDate?.() || session.timestamp).toDateString();
-    return sessionDate === today;
-  });
-  
-  // Check if user hit step goal
-  const stepGoalMet = wellnessStore.steps >= 10000;
-  
-  // Award bonus XP for daily completions
-  let bonusXP = 0;
-  let achievements = [];
-  
-  if (moodLoggedToday && waterGoalMet && studiedToday) {
-    bonusXP += 25;
-    achievements.push('Daily Triple Crown');
-  }
-  
-  if (moodLoggedToday && waterGoalMet && studiedToday && stepGoalMet) {
-    bonusXP += 50;
-    achievements.push('Perfect Wellness Day');
-  }
-  
-  if (bonusXP > 0) {
-    appStore.addXP(bonusXP);
-    appStore.addShinePoints(Math.floor(bonusXP / 10));
-    
-    // Show achievement notification
-    if (achievements.length > 0) {
-      toast.success(`🏆 ${achievements.join(', ')} achieved! +${bonusXP} XP`);
-    }
-  }
-  
-  return {
-    moodLoggedToday,
-    waterGoalMet,
-    studiedToday,
-    stepGoalMet,
-    bonusXP,
-    achievements
-  };
-}; 
+// Daily achievement checker (commented out - not currently used)
+// export const checkDailyAchievements = () => {
+//   const appStore = useAppStore.getState();
+//   const wellnessStore = useWellnessStore.getState();
+//   const moodStore = useMoodStore.getState();
+//   const taskStore = useTaskStore.getState();
+//   
+//   const today = new Date().toDateString();
+//   
+//   // Check if mood was logged today
+//   const moodLoggedToday = moodStore.moodLogs.some(log => {
+//     const logDate = new Date(log.timestamp?.toDate?.() || log.timestamp).toDateString();
+//     return logDate === today;
+//   });
+//   
+//   // Check water goal achievement
+//   const waterGoalMet = wellnessStore.waterIntake >= wellnessStore.dailyWaterGoal;
+//   
+//   // Check if study session happened today
+//   const studiedToday = taskStore.studySessions.some(session => {
+//     const sessionDate = new Date(session.timestamp?.toDate?.() || session.timestamp).toDateString();
+//     return sessionDate === today;
+//   });
+//   
+//   // Check if user hit step goal
+//   const stepGoalMet = wellnessStore.steps >= 10000;
+//   
+//   // Award bonus XP for daily completions
+//   let bonusXP = 0;
+//   let achievements = [];
+//   
+//   if (moodLoggedToday && waterGoalMet && studiedToday) {
+//     bonusXP += 25;
+//     achievements.push('Daily Triple Crown');
+//   }
+//   
+//   if (moodLoggedToday && waterGoalMet && studiedToday && stepGoalMet) {
+//     bonusXP += 50;
+//     achievements.push('Perfect Wellness Day');
+//   }
+//   
+//   if (bonusXP > 0) {
+//     appStore.addXP(bonusXP);
+//     appStore.addShinePoints(Math.floor(bonusXP / 10));
+//     
+//     // Show achievement notification
+//     if (achievements.length > 0) {
+//       toast.success(`🏆 ${achievements.join(', ')} achieved! +${bonusXP} XP`);
+//     }
+//   }
+// }; 

@@ -156,23 +156,6 @@ export default function Dashboard() {
   const cardBase = `rounded-2xl border shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`
   const titleCls = `${darkMode ? 'text-white' : 'text-gray-800'} text-sm font-semibold`
 
-  // Custom tooltip for charts
-  const CustomTooltip = ({ active, payload, label, formatter }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className={`p-3 rounded-lg shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}>
-          <p className="font-medium">{label}</p>
-          {payload.map((entry, index) => (
-            <p key={index} style={{ color: entry.color }}>
-              {`${entry.name}: ${formatter ? formatter(entry.value) : entry.value}`}
-            </p>
-          ))}
-        </div>
-      )
-    }
-    return null
-  }
-
   return (
     <div className={`min-h-screen transition-colors duration-200 ${
       darkMode ? 'bg-gray-900' : 'bg-slate-50'
@@ -221,7 +204,7 @@ export default function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#e5e7eb'} />
                     <XAxis dataKey="day" stroke={darkMode ? '#9ca3af' : '#6b7280'} />
                     <YAxis domain={[0, 5]} allowDecimals={true} stroke={darkMode ? '#9ca3af' : '#6b7280'} />
-                    <Tooltip content={<CustomTooltip formatter={(value) => `${value}/5`} />} />
+                    <Tooltip />
                     <Line type="monotone" dataKey="mood" stroke="#8b5cf6" strokeWidth={3} dot={{ fill: '#8b5cf6', strokeWidth: 2, r: 4 }} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -238,7 +221,7 @@ export default function Dashboard() {
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip content={<CustomTooltip formatter={(value, name, props) => `${value}% (${props.payload.actual}/${props.payload.goal})`} />} />
+                    <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -256,7 +239,7 @@ export default function Dashboard() {
                     <XAxis dataKey="day" stroke={darkMode ? '#9ca3af' : '#6b7280'} />
                     <YAxis yAxisId="left" orientation="left" stroke="#10b981" />
                     <YAxis yAxisId="right" orientation="right" stroke="#3b82f6" />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip />
                     <Bar yAxisId="left" dataKey="steps" fill="#10b981" radius={[6,6,0,0]} name="Steps (K)" />
                     <Bar yAxisId="right" dataKey="sleep" fill="#3b82f6" radius={[6,6,0,0]} name="Sleep (hrs)" />
                   </BarChart>
@@ -282,7 +265,7 @@ export default function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#e5e7eb'} />
                     <XAxis dataKey="day" stroke={darkMode ? '#9ca3af' : '#6b7280'} />
                     <YAxis stroke={darkMode ? '#9ca3af' : '#6b7280'} />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip />
                     <Area type="monotone" dataKey="water" stroke="#8b5cf6" fill="url(#grad1)" strokeWidth={2} name="Water (glasses)" />
                     <Area type="monotone" dataKey="calories" stroke="#f59e0b" fill="url(#grad2)" strokeWidth={2} name="Calories (100s)" />
                   </AreaChart>
@@ -312,7 +295,7 @@ export default function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#e5e7eb'} />
                     <XAxis dataKey="day" stroke={darkMode ? '#9ca3af' : '#6b7280'} />
                     <YAxis stroke={darkMode ? '#9ca3af' : '#6b7280'} />
-                    <Tooltip content={<CustomTooltip formatter={(value) => `${value} min`} />} />
+                    <Tooltip />
                     <Area type="monotone" dataKey="minutes" stroke="#10b981" fill="url(#grad3)" strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
