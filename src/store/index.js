@@ -645,6 +645,15 @@ export const useTaskStore = create((set, get) => ({
       // Add XP based on duration
       const xpGained = Math.floor(sessionData.duration / 5) * 5; // 5 XP per 5 minutes
       useAppStore.getState().addXP(xpGained);
+      
+      // Add notification for completed study session
+      useNotificationStore.getState().addNotification({
+        type: 'study',
+        title: 'Study Session Complete',
+        message: `Great job! You completed a ${sessionData.duration}-minute session on ${sessionData.subject}.`,
+        xpGained: xpGained
+      });
+      
       toast.success(`Study session logged! +${xpGained} XP`);
       
     } catch (error) {

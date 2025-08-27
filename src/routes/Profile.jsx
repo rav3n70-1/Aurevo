@@ -397,6 +397,120 @@ export default function Profile() {
                   </motion.div>
                 )}
 
+                {activeTab === 'stats' && (
+                  <motion.div
+                    key="stats"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                      Detailed Statistics
+                    </h3>
+
+                    {/* Study Statistics */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Study Time Breakdown */}
+                      <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>
+                        <h4 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                          Study Time Analysis
+                        </h4>
+                        <div className="space-y-3">
+                          <div className="flex justify-between">
+                            <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>This Week:</span>
+                            <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {Math.floor(stats.totalStudyTime * 0.3 / 60)}h {Math.floor(stats.totalStudyTime * 0.3) % 60}m
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>This Month:</span>
+                            <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {Math.floor(stats.totalStudyTime / 60)}h {stats.totalStudyTime % 60}m
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>Average Session:</span>
+                            <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {stats.averageSessionLength} minutes
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>Best Streak:</span>
+                            <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              {stats.longestStreak} days
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Subject Distribution */}
+                      <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>
+                        <h4 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                          Study Subjects
+                        </h4>
+                        <div className="space-y-3">
+                          {[
+                            { subject: 'Mathematics', percentage: 35, color: 'bg-blue-500' },
+                            { subject: 'Science', percentage: 28, color: 'bg-green-500' },
+                            { subject: 'Literature', percentage: 20, color: 'bg-purple-500' },
+                            { subject: 'History', percentage: 17, color: 'bg-orange-500' }
+                          ].map((item, index) => (
+                            <div key={item.subject}>
+                              <div className="flex justify-between mb-1">
+                                <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                  {item.subject}
+                                </span>
+                                <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                  {item.percentage}%
+                                </span>
+                              </div>
+                              <div className={`h-2 rounded-full overflow-hidden ${darkMode ? 'bg-gray-600' : 'bg-gray-200'}`}>
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${item.percentage}%` }}
+                                  transition={{ duration: 1, delay: index * 0.2 }}
+                                  className={`h-full ${item.color}`}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Activity Chart */}
+                    <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>
+                      <h4 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Weekly Activity
+                      </h4>
+                      <div className="grid grid-cols-7 gap-2">
+                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => {
+                          const activity = Math.random() * 100;
+                          return (
+                            <div key={day} className="text-center">
+                              <div className={`text-xs mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {day}
+                              </div>
+                              <div className={`h-20 rounded ${darkMode ? 'bg-gray-600' : 'bg-gray-200'} relative overflow-hidden`}>
+                                <motion.div
+                                  initial={{ height: 0 }}
+                                  animate={{ height: `${activity}%` }}
+                                  transition={{ duration: 1, delay: index * 0.1 }}
+                                  className="absolute bottom-0 w-full bg-gradient-to-t from-violet-600 to-purple-600"
+                                />
+                              </div>
+                              <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {Math.round(activity)}%
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
                 {activeTab === 'achievements' && (
                   <motion.div
                     key="achievements"
@@ -473,6 +587,150 @@ export default function Profile() {
                           </div>
                         </motion.div>
                       ))}
+                    </div>
+                  </motion.div>
+                )}
+
+                {activeTab === 'settings' && (
+                  <motion.div
+                    key="settings"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                      Profile Settings
+                    </h3>
+
+                    {/* Personal Information */}
+                    <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>
+                      <h4 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Personal Information
+                      </h4>
+                      <div className="space-y-4">
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Display Name
+                          </label>
+                          <input
+                            type="text"
+                            value={profileData.displayName}
+                            onChange={(e) => setProfileData(prev => ({ ...prev, displayName: e.target.value }))}
+                            className={`w-full px-3 py-2 rounded-lg border ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Bio
+                          </label>
+                          <textarea
+                            value={profileData.bio}
+                            onChange={(e) => setProfileData(prev => ({ ...prev, bio: e.target.value }))}
+                            rows={3}
+                            className={`w-full px-3 py-2 rounded-lg border ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                            placeholder="Tell us about yourself..."
+                          />
+                        </div>
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Location
+                          </label>
+                          <input
+                            type="text"
+                            value={profileData.location}
+                            onChange={(e) => setProfileData(prev => ({ ...prev, location: e.target.value }))}
+                            className={`w-full px-3 py-2 rounded-lg border ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                            placeholder="City, Country"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Social Links */}
+                    <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700/30' : 'bg-gray-50'}`}>
+                      <h4 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Social Links
+                      </h4>
+                      <div className="space-y-4">
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Website
+                          </label>
+                          <input
+                            type="url"
+                            value={profileData.website}
+                            onChange={(e) => setProfileData(prev => ({ ...prev, website: e.target.value }))}
+                            className={`w-full px-3 py-2 rounded-lg border ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                            placeholder="https://your-website.com"
+                          />
+                        </div>
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            GitHub
+                          </label>
+                          <input
+                            type="text"
+                            value={profileData.github}
+                            onChange={(e) => setProfileData(prev => ({ ...prev, github: e.target.value }))}
+                            className={`w-full px-3 py-2 rounded-lg border ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                            placeholder="@username"
+                          />
+                        </div>
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Twitter
+                          </label>
+                          <input
+                            type="text"
+                            value={profileData.twitter}
+                            onChange={(e) => setProfileData(prev => ({ ...prev, twitter: e.target.value }))}
+                            className={`w-full px-3 py-2 rounded-lg border ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                            placeholder="@username"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Save Button */}
+                    <div className="flex justify-end">
+                      <motion.button
+                        onClick={handleSaveProfile}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${
+                          darkMode 
+                            ? 'bg-violet-600 text-white hover:bg-violet-500' 
+                            : 'bg-violet-500 text-white hover:bg-violet-400'
+                        }`}
+                      >
+                        <Save size={16} />
+                        Save Changes
+                      </motion.button>
                     </div>
                   </motion.div>
                 )}

@@ -33,7 +33,9 @@ import {
   MapPin,
   Calendar,
   Clock,
-  BarChart3
+  BarChart3,
+  Target,
+  Trophy
 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Sidebar from '../components/Sidebar'
@@ -620,6 +622,461 @@ export default function Settings() {
                           <Download size={16} className="mr-2 inline" />
                           Export
                         </motion.button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Account Settings */}
+                {activeSection === 'account' && (
+                  <motion.div
+                    key="account"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                      Account Settings
+                    </h2>
+
+                    {/* Profile Information */}
+                    <div className={`p-4 rounded-lg border ${
+                      darkMode ? 'border-gray-600 bg-gray-700/30' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Profile Information
+                      </h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Email Address
+                          </label>
+                          <input
+                            type="email"
+                            value={user?.email || ''}
+                            disabled
+                            className={`w-full px-3 py-2 rounded-lg border opacity-50 ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-gray-100 border-gray-300 text-gray-900'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Display Name
+                          </label>
+                          <input
+                            type="text"
+                            defaultValue={user?.displayName || ''}
+                            className={`w-full px-3 py-2 rounded-lg border ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Account Actions */}
+                    <div className={`p-4 rounded-lg border ${
+                      darkMode ? 'border-gray-600 bg-gray-700/30' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Account Actions
+                      </h3>
+                      <div className="space-y-3">
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          className={`w-full p-3 rounded-lg text-left flex items-center gap-3 ${
+                            darkMode ? 'bg-blue-900/30 hover:bg-blue-900/50' : 'bg-blue-50 hover:bg-blue-100'
+                          }`}
+                        >
+                          <Key className="text-blue-500" size={20} />
+                          <div>
+                            <div className={`font-medium ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                              Change Password
+                            </div>
+                            <div className={`text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                              Update your account password
+                            </div>
+                          </div>
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          className={`w-full p-3 rounded-lg text-left flex items-center gap-3 ${
+                            darkMode ? 'bg-red-900/30 hover:bg-red-900/50' : 'bg-red-50 hover:bg-red-100'
+                          }`}
+                        >
+                          <Trash2 className="text-red-500" size={20} />
+                          <div>
+                            <div className={`font-medium ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
+                              Delete Account
+                            </div>
+                            <div className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                              Permanently delete your account and data
+                            </div>
+                          </div>
+                        </motion.button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Privacy Settings */}
+                {activeSection === 'privacy' && (
+                  <motion.div
+                    key="privacy"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                      Privacy & Security
+                    </h2>
+
+                    {/* Privacy Settings */}
+                    <div className={`p-4 rounded-lg border ${
+                      darkMode ? 'border-gray-600 bg-gray-700/30' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Data Privacy
+                      </h3>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className={`flex items-center text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              <Shield size={16} className="mr-2" />
+                              Profile Visibility
+                            </label>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Control who can see your profile
+                            </p>
+                          </div>
+                          <select
+                            value={settings.profileVisibility}
+                            onChange={(e) => handleSettingChange('profileVisibility', e.target.value)}
+                            className={`px-3 py-1 rounded border text-sm ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                          >
+                            <option value="public">Public</option>
+                            <option value="friends">Friends Only</option>
+                            <option value="private">Private</option>
+                          </select>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className={`flex items-center text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              <BarChart3 size={16} className="mr-2" />
+                              Share Progress
+                            </label>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Allow others to see your study progress
+                            </p>
+                          </div>
+                          <motion.button
+                            onClick={() => handleSettingChange('shareProgress', !settings.shareProgress)}
+                            className={`relative w-12 h-6 rounded-full transition-colors ${
+                              settings.shareProgress ? 'bg-violet-500' : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                            }`}
+                          >
+                            <motion.div
+                              animate={{ x: settings.shareProgress ? 24 : 2 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow"
+                            />
+                          </motion.button>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className={`flex items-center text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              <Eye size={16} className="mr-2" />
+                              Analytics
+                            </label>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Help improve the app with usage analytics
+                            </p>
+                          </div>
+                          <motion.button
+                            onClick={() => handleSettingChange('allowAnalytics', !settings.allowAnalytics)}
+                            className={`relative w-12 h-6 rounded-full transition-colors ${
+                              settings.allowAnalytics ? 'bg-violet-500' : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                            }`}
+                          >
+                            <motion.div
+                              animate={{ x: settings.allowAnalytics ? 24 : 2 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow"
+                            />
+                          </motion.button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Study Settings */}
+                {activeSection === 'study' && (
+                  <motion.div
+                    key="study"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                      Study Preferences
+                    </h2>
+
+                    {/* Study Settings */}
+                    <div className={`p-4 rounded-lg border ${
+                      darkMode ? 'border-gray-600 bg-gray-700/30' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Session Settings
+                      </h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            <Clock size={16} className="inline mr-2" />
+                            Default Study Duration (minutes)
+                          </label>
+                          <input
+                            type="range"
+                            min="5"
+                            max="120"
+                            value={settings.defaultStudyDuration}
+                            onChange={(e) => handleSettingChange('defaultStudyDuration', parseInt(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>5 min</span>
+                            <span>{settings.defaultStudyDuration} minutes</span>
+                            <span>120 min</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            <Target size={16} className="inline mr-2" />
+                            Daily Study Goal (minutes)
+                          </label>
+                          <input
+                            type="range"
+                            min="30"
+                            max="480"
+                            value={settings.dailyStudyGoal}
+                            onChange={(e) => handleSettingChange('dailyStudyGoal', parseInt(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>30 min</span>
+                            <span>{Math.floor(settings.dailyStudyGoal / 60)}h {settings.dailyStudyGoal % 60}m</span>
+                            <span>8 hours</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className={`flex items-center text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              Auto-start Breaks
+                            </label>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Automatically start break timers
+                            </p>
+                          </div>
+                          <motion.button
+                            onClick={() => handleSettingChange('autoStartBreaks', !settings.autoStartBreaks)}
+                            className={`relative w-12 h-6 rounded-full transition-colors ${
+                              settings.autoStartBreaks ? 'bg-violet-500' : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                            }`}
+                          >
+                            <motion.div
+                              animate={{ x: settings.autoStartBreaks ? 24 : 2 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow"
+                            />
+                          </motion.button>
+                        </div>
+
+                        <div>
+                          <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            <Bell size={16} className="inline mr-2" />
+                            Reminder Frequency
+                          </label>
+                          <select
+                            value={settings.reminderFrequency}
+                            onChange={(e) => handleSettingChange('reminderFrequency', e.target.value)}
+                            className={`w-full px-3 py-2 rounded-lg border ${
+                              darkMode 
+                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                : 'bg-white border-gray-300 text-gray-900'
+                            }`}
+                          >
+                            <option value="never">Never</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="custom">Custom</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Notification Settings */}
+                {activeSection === 'notifications' && (
+                  <motion.div
+                    key="notifications"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                      Notification Preferences
+                    </h2>
+
+                    {/* Email Notifications */}
+                    <div className={`p-4 rounded-lg border ${
+                      darkMode ? 'border-gray-600 bg-gray-700/30' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Email Notifications
+                      </h3>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className={`flex items-center text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              <Mail size={16} className="mr-2" />
+                              Study Reminders
+                            </label>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Get email reminders for study sessions
+                            </p>
+                          </div>
+                          <motion.button
+                            onClick={() => handleSettingChange('emailNotifications', !settings.emailNotifications)}
+                            className={`relative w-12 h-6 rounded-full transition-colors ${
+                              settings.emailNotifications ? 'bg-violet-500' : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                            }`}
+                          >
+                            <motion.div
+                              animate={{ x: settings.emailNotifications ? 24 : 2 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow"
+                            />
+                          </motion.button>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className={`flex items-center text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              <BarChart3 size={16} className="mr-2" />
+                              Weekly Reports
+                            </label>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Receive weekly progress summaries
+                            </p>
+                          </div>
+                          <motion.button
+                            onClick={() => handleSettingChange('weeklyReports', !settings.weeklyReports)}
+                            className={`relative w-12 h-6 rounded-full transition-colors ${
+                              settings.weeklyReports ? 'bg-violet-500' : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                            }`}
+                          >
+                            <motion.div
+                              animate={{ x: settings.weeklyReports ? 24 : 2 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow"
+                            />
+                          </motion.button>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className={`flex items-center text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              Marketing Emails
+                            </label>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Receive updates about new features
+                            </p>
+                          </div>
+                          <motion.button
+                            onClick={() => handleSettingChange('marketingEmails', !settings.marketingEmails)}
+                            className={`relative w-12 h-6 rounded-full transition-colors ${
+                              settings.marketingEmails ? 'bg-violet-500' : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                            }`}
+                          >
+                            <motion.div
+                              animate={{ x: settings.marketingEmails ? 24 : 2 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow"
+                            />
+                          </motion.button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Push Notifications */}
+                    <div className={`p-4 rounded-lg border ${
+                      darkMode ? 'border-gray-600 bg-gray-700/30' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Browser Notifications
+                      </h3>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className={`flex items-center text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              <Bell size={16} className="mr-2" />
+                              Study Session Alerts
+                            </label>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Get browser notifications for study sessions
+                            </p>
+                          </div>
+                          <motion.button
+                            onClick={() => handleSettingChange('studyReminders', true)}
+                            className={`relative w-12 h-6 rounded-full transition-colors bg-violet-500`}
+                          >
+                            <motion.div
+                              animate={{ x: 24 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow"
+                            />
+                          </motion.button>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className={`flex items-center text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              <Trophy size={16} className="mr-2" />
+                              Achievement Notifications
+                            </label>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Get notified when you unlock achievements
+                            </p>
+                          </div>
+                          <motion.button
+                            onClick={() => handleSettingChange('achievementAlerts', true)}
+                            className={`relative w-12 h-6 rounded-full transition-colors bg-violet-500`}
+                          >
+                            <motion.div
+                              animate={{ x: 24 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow"
+                            />
+                          </motion.button>
+                        </div>
                       </div>
                     </div>
                   </motion.div>
