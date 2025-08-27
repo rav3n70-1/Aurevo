@@ -10,6 +10,8 @@ import Wellness from './routes/Wellness'
 import Study from './routes/Study'
 import Goals from './routes/Goals'
 import Reports from './routes/Reports'
+import Profile from './routes/Profile'
+import Settings from './routes/Settings'
 import { useAuth } from './hooks_useAuth'
 import { useAppStore } from './store'
 import './i18n'
@@ -43,6 +45,8 @@ export default function App() {
           <Route path="/study" element={user ? <Study /> : <Navigate to="/login" />} />
           <Route path="/goals" element={user ? <Goals /> : <Navigate to="/login" />} />
           <Route path="/reports" element={user ? <Reports /> : <Navigate to="/login" />} />
+          <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
+          <Route path="/settings" element={user ? <Settings /> : <Navigate to="/login" />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
         

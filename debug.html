@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurevo Debug</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .debug-info { 
+            background: rgba(255,255,255,0.1); 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 10px;
+        }
+        .status-good { color: #4ade80; }
+        .status-bad { color: #f87171; }
+        .status-warning { color: #fbbf24; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Aurevo Debug Page</h1>
+    <p>This page helps diagnose why your Aurevo app might be showing a blank page.</p>
+    
+    <div class="debug-info">
+        <h2>📋 Debug Checklist</h2>
+        <ol>
+            <li>Open browser console (F12 → Console tab)</li>
+            <li>Go to <a href="http://localhost:5173" target="_blank" style="color: #60a5fa;">http://localhost:5173</a></li>
+            <li>Look for error messages in the console</li>
+            <li>Check the steps below</li>
+        </ol>
+    </div>
+
+    <div class="debug-info">
+        <h2>⚙️ Configuration Status</h2>
+        <div id="config-status">Loading...</div>
+    </div>
+
+    <div class="debug-info">
+        <h2>🔧 Common Fixes</h2>
+        <h3>1. Update .env file with your Google API credentials:</h3>
+        <pre style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 5px; overflow-x: auto;">
+REACT_APP_GOOGLE_API_KEY=your-actual-google-api-key
+REACT_APP_GOOGLE_CLIENT_ID=your-actual-google-oauth-client-id</pre>
+        
+        <h3>2. Restart the development server:</h3>
+        <pre style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 5px;">
+npm run dev</pre>
+        
+        <h3>3. Clear browser cache and reload</h3>
+        <p>Press Ctrl+Shift+R (or Cmd+Shift+R on Mac)</p>
+    </div>
+
+    <div class="debug-info">
+        <h2>🆘 If still blank:</h2>
+        <ol>
+            <li>Check browser console for errors</li>
+            <li>Try accessing: <a href="http://localhost:5173/login" target="_blank" style="color: #60a5fa;">http://localhost:5173/login</a> directly</li>
+            <li>Make sure no antivirus/firewall is blocking localhost</li>
+            <li>Try a different browser</li>
+        </ol>
+    </div>
+
+    <script>
+        // Simple configuration check
+        function checkConfig() {
+            const configDiv = document.getElementById('config-status');
+            let html = '';
+            
+            // Check if we can reach the main app
+            fetch('http://localhost:5173')
+                .then(response => response.text())
+                .then(data => {
+                    if (data.includes('Aurevo')) {
+                        html += '<div class="status-good">✅ Development server is running</div>';
+                    } else {
+                        html += '<div class="status-bad">❌ Development server not responding correctly</div>';
+                    }
+                })
+                .catch(error => {
+                    html += '<div class="status-bad">❌ Cannot reach development server</div>';
+                })
+                .finally(() => {
+                    html += '<div class="status-warning">⚠️ Update your .env file with actual Google API credentials</div>';
+                    configDiv.innerHTML = html;
+                });
+        }
+        
+        checkConfig();
+    </script>
+</body>
+</html> 

@@ -734,6 +734,100 @@ export const useTaskStore = create((set, get) => ({
   }
 }));
 
+// Notification management store
+export const useNotificationStore = create((set, get) => ({
+  notifications: [
+    {
+      id: 1,
+      type: 'achievement',
+      title: 'New Achievement Unlocked!',
+      message: 'You\'ve completed your first week of consistent studying. Keep it up!',
+      timestamp: new Date(Date.now() - 300000), // 5 minutes ago
+      read: false,
+      actionable: true,
+      action: 'View Achievement'
+    },
+    {
+      id: 2,
+      type: 'study',
+      title: 'Study Session Complete',
+      message: 'Great job! You completed a 25-minute Pomodoro session on Mathematics.',
+      timestamp: new Date(Date.now() - 3600000), // 1 hour ago
+      read: false,
+      xpGained: 50
+    },
+    {
+      id: 3,
+      type: 'reminder',
+      title: 'Study Time Reminder',
+      message: 'It\'s time for your scheduled study session. Ready to focus?',
+      timestamp: new Date(Date.now() - 7200000), // 2 hours ago
+      read: true,
+      actionable: true,
+      action: 'Start Session'
+    },
+    {
+      id: 4,
+      type: 'streak',
+      title: 'Streak Milestone!',
+      message: 'Amazing! You\'ve maintained your study streak for 7 days straight.',
+      timestamp: new Date(Date.now() - 86400000), // 1 day ago
+      read: true,
+      streakCount: 7
+    },
+    {
+      id: 5,
+      type: 'goal',
+      title: 'Daily Goal Achieved',
+      message: 'Congratulations! You\'ve reached your daily study goal of 2 hours.',
+      timestamp: new Date(Date.now() - 172800000), // 2 days ago
+      read: true,
+      celebratory: true
+    }
+  ],
+
+  addNotification: (notification) => {
+    const newNotification = {
+      id: Date.now(),
+      timestamp: new Date(),
+      read: false,
+      ...notification
+    }
+    set(state => ({
+      notifications: [newNotification, ...state.notifications]
+    }))
+  },
+
+  markAsRead: (id) => {
+    set(state => ({
+      notifications: state.notifications.map(notification =>
+        notification.id === id ? { ...notification, read: true } : notification
+      )
+    }))
+  },
+
+  markAllAsRead: () => {
+    set(state => ({
+      notifications: state.notifications.map(notification => ({ ...notification, read: true }))
+    }))
+  },
+
+  deleteNotification: (id) => {
+    set(state => ({
+      notifications: state.notifications.filter(notification => notification.id !== id)
+    }))
+  },
+
+  clearAllNotifications: () => {
+    set({ notifications: [] })
+  },
+
+  getUnreadCount: () => {
+    const { notifications } = get()
+    return notifications.filter(n => !n.read).length
+  }
+}));
+
 // Auto-sync store data to Firebase (commented out - causing issues)
 // TODO: Implement proper subscription when needed
 // useAppStore.subscribe(
