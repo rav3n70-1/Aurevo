@@ -14,6 +14,7 @@ import Profile from './routes/Profile'
 import Settings from './routes/Settings'
 import PrivacyPolicy from './routes/PrivacyPolicy'
 import TermsOfService from './routes/TermsOfService'
+import LandingPage from './routes/LandingPage'
 import { useAuth } from './hooks_useAuth'
 import { useAppStore, useNotificationStore } from './store'
 import { useEffect } from 'react'
@@ -45,7 +46,7 @@ export default function App() {
     <div className={darkMode ? 'dark' : ''}>
       <div className="min-h-screen">
         <Routes>
-          <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Navigate to="/login" />} />
+          <Route path="/" element={user ? <Navigate to="/dashboard" /> : <LandingPage />} />
           <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
           <Route path="/onboarding" element={user ? <Onboarding /> : <Navigate to="/login" />} />
           <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/login" />} />
