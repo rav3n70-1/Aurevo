@@ -107,6 +107,17 @@ Modern, comprehensive web application for mood tracking, wellness monitoring, ac
    VITE_FIREBASE_APP_ID=your_app_id
    VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
    ```
+
+   Additional env for Google integrations:
+   ```env
+   # Google OAuth for Drive/Photos
+   VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+   VITE_GOOGLE_API_KEY=your-google-api-key
+
+   # Optional: Stock photo providers
+   VITE_UNSPLASH_ACCESS_KEY=your_unsplash_access_key
+   VITE_PEXELS_API_KEY=your_pexels_api_key
+   ```
    
    **Note**: The current setup uses the demo Firebase project "aurevo-8c2db". For production, replace with your own Firebase project credentials.
 
@@ -114,6 +125,19 @@ Modern, comprehensive web application for mood tracking, wellness monitoring, ac
    - Enable Authentication providers: Google, GitHub
    - Create Firestore database in test mode
    - Set up Firebase Storage for file uploads
+
+4. **Google Cloud APIs Configuration**
+   - In Google Cloud Console, enable the following APIs:
+     - Google Drive API
+     - Google Photos Library API
+   - Create OAuth 2.0 Client ID (type: Web application)
+     - Authorized JavaScript origins:
+       - http://localhost:5173
+       - http://127.0.0.1:5173
+       - Your production domain(s)
+     - Authorized redirect URIs (if you use explicit OAuth redirects; not needed for gapi auth2 popup):
+       - http://localhost:5173
+   - Copy the Client ID and API key into your `.env` as shown above
 
 4. **Development Server**
    ```bash

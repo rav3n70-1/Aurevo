@@ -743,57 +743,42 @@ export const useTaskStore = create((set, get) => ({
   }
 }));
 
-// Notification management store
-export const useNotificationStore = create((set, get) => ({
-  notifications: [
-    {
-      id: 1,
-      type: 'achievement',
-      title: 'New Achievement Unlocked!',
-      message: 'You\'ve completed your first week of consistent studying. Keep it up!',
-      timestamp: new Date(Date.now() - 300000), // 5 minutes ago
-      read: false,
-      actionable: true,
-      action: 'View Achievement'
-    },
-    {
-      id: 2,
-      type: 'study',
-      title: 'Study Session Complete',
-      message: 'Great job! You completed a 25-minute Pomodoro session on Mathematics.',
-      timestamp: new Date(Date.now() - 3600000), // 1 hour ago
-      read: false,
-      xpGained: 50
-    },
-    {
-      id: 3,
-      type: 'reminder',
-      title: 'Study Time Reminder',
-      message: 'It\'s time for your scheduled study session. Ready to focus?',
-      timestamp: new Date(Date.now() - 7200000), // 2 hours ago
-      read: true,
-      actionable: true,
-      action: 'Start Session'
-    },
-    {
-      id: 4,
-      type: 'streak',
-      title: 'Streak Milestone!',
-      message: 'Amazing! You\'ve maintained your study streak for 7 days straight.',
-      timestamp: new Date(Date.now() - 86400000), // 1 day ago
-      read: true,
-      streakCount: 7
-    },
-    {
-      id: 5,
-      type: 'goal',
-      title: 'Daily Goal Achieved',
-      message: 'Congratulations! You\'ve reached your daily study goal of 2 hours.',
-      timestamp: new Date(Date.now() - 172800000), // 2 days ago
-      read: true,
-      celebratory: true
-    }
-  ],
+// Notification management store with persistence
+export const useNotificationStore = create(
+  persist(
+    (set, get) => ({
+      notifications: [],
+      
+      // Initialize with sample notifications if none exist
+      initializeNotifications: () => {
+        const { notifications } = get();
+        if (notifications.length === 0) {
+          set({
+            notifications: [
+              {
+                id: 1,
+                type: 'achievement',
+                title: 'Welcome to Aurevo!',
+                message: 'Start your learning journey and unlock achievements as you progress.',
+                timestamp: new Date(Date.now() - 300000), // 5 minutes ago
+                read: false,
+                actionable: true,
+                action: 'Get Started'
+              },
+              {
+                id: 2,
+                type: 'system',
+                title: 'Tip: Set Your Study Goals',
+                message: 'Visit Settings to customize your daily study goals and preferences.',
+                timestamp: new Date(Date.now() - 600000), // 10 minutes ago
+                read: false,
+                actionable: true,
+                action: 'Open Settings'
+              }
+            ]
+          });
+        }
+      },
 
   addNotification: (notification) => {
     const newNotification = {
@@ -835,7 +820,31 @@ export const useNotificationStore = create((set, get) => ({
     const { notifications } = get()
     return notifications.filter(n => !n.read).length
   }
-}));
+}),
+{
+  name: 'notification-storage',
+  partialize: (state) => ({ 
+    notifications: (state.notifications || []).map(n => ({
+      ...n,
+      timestamp: n.timestamp instanceof Date ? n.timestamp.getTime() : n.timestamp
+    }))
+  }),
+  onRehydrateStorage: () => {
+    return (state, error) => {
+      if (error) {
+        console.warn('Error rehydrating notifications:', error);
+        return;
+      }
+      if (state?.notifications) {
+        state.notifications = state.notifications.map(n => ({
+          ...n,
+          timestamp: new Date(n.timestamp)
+        }));
+      }
+    };
+  }
+}
+));
 
 // Auto-sync store data to Firebase (commented out - causing issues)
 // TODO: Implement proper subscription when needed

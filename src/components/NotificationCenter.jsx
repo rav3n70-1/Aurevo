@@ -43,13 +43,19 @@ export default function NotificationCenter({ isOpen, onClose }) {
     markAllAsRead, 
     deleteNotification, 
     clearAllNotifications,
-    getUnreadCount 
+    getUnreadCount,
+    initializeNotifications
   } = useNotificationStore()
   
   const [filter, setFilter] = useState('all')
   const [showSettings, setShowSettings] = useState(false)
 
   const unreadCount = getUnreadCount()
+
+  // Initialize notifications on component mount
+  useEffect(() => {
+    initializeNotifications()
+  }, [])
 
   const handleNotificationAction = (notification) => {
     if (notification.actionable) {

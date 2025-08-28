@@ -40,7 +40,7 @@ import {
 import Navbar from '../components/Navbar'
 import Sidebar from '../components/Sidebar'
 import { useAppStore } from '../store'
-import { initDrive, uploadToDrive, listDriveFiles } from '../services/drive'
+import { initDrive, uploadToDrive, listDriveFiles, exportDataToDrive, downloadFromDrive } from '../services/drive'
 import { pickPhoto } from '../services/photos'
 
 export default function Settings() {
@@ -127,6 +127,12 @@ export default function Settings() {
       label: 'Notifications', 
       icon: Bell,
       description: 'Notification preferences'
+    },
+    { 
+      id: 'legal', 
+      label: 'Legal & About', 
+      icon: FileText,
+      description: 'Privacy policy, terms, and app information'
     }
   ]
 
@@ -171,6 +177,53 @@ export default function Settings() {
       console.error('Failed to connect Google Photos:', error)
     } finally {
       setIsPhotosLoading(false)
+    }
+  }
+
+  const handleBackupNow = async () => {
+    setIsDriveLoading(true)
+    try {
+      await initDrive()
+      const data = {
+        profile: user,
+        settings,
+        exportDate: new Date().toISOString(),
+        studyData: {}
+      }
+      const uploaded = await exportDataToDrive(data, 'aurevo-backup.json')
+      const files = await listDriveFiles()
+      setDriveFiles(files)
+      return uploaded
+    } catch (error) {
+      console.error('Backup to Google Drive failed:', error)
+    } finally {
+      setIsDriveLoading(false)
+    }
+  }
+
+  const handleRestore = async () => {
+    setIsDriveLoading(true)
+    try {
+      await initDrive()
+      const files = await listDriveFiles('aurevo-backup')
+      const jsonBackups = files.filter(f => f.name.endsWith('.json'))
+      if (!jsonBackups.length) {
+        console.warn('No backup files found in Google Drive')
+        return
+      }
+      const latest = jsonBackups.sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime))[0]
+      const content = await downloadFromDrive(latest.id)
+      const text = typeof content === 'string' ? content : (content?.body || content)
+      const parsed = typeof text === 'string' ? JSON.parse(text) : JSON.parse(String(text))
+      if (parsed?.settings) {
+        setSettings(prev => ({ ...prev, ...parsed.settings }))
+        localStorage.setItem('aurevor-settings', JSON.stringify(parsed.settings))
+      }
+      setDriveFiles(files)
+    } catch (error) {
+      console.error('Restore from Google Drive failed:', error)
+    } finally {
+      setIsDriveLoading(false)
     }
   }
 
@@ -533,6 +586,7 @@ export default function Settings() {
                               className={`flex-1 py-2 px-3 rounded-lg text-sm ${
                                 darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
                               }`}
+                              onClick={handleBackupNow}
                             >
                               <Upload size={14} className="inline mr-1" />
                               Backup Now
@@ -542,6 +596,7 @@ export default function Settings() {
                               className={`flex-1 py-2 px-3 rounded-lg text-sm ${
                                 darkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
                               }`}
+                              onClick={handleRestore}
                             >
                               <Download size={14} className="inline mr-1" />
                               Restore
@@ -927,6 +982,152 @@ export default function Settings() {
                             <option value="custom">Custom</option>
                           </select>
                         </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Legal & About Settings */}
+                {activeSection === 'legal' && (
+                  <motion.div
+                    key="legal"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                      Legal & About
+                    </h2>
+
+                    {/* Legal Documents */}
+                    <div className={`p-4 rounded-lg border ${
+                      darkMode ? 'border-gray-600 bg-gray-700/30' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Legal Documents
+                      </h3>
+                      <div className="space-y-3">
+                        <motion.a
+                          href="/privacy"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          whileHover={{ scale: 1.02 }}
+                          className={`w-full p-3 rounded-lg text-left flex items-center gap-3 transition-colors ${
+                            darkMode ? 'bg-blue-900/30 hover:bg-blue-900/50' : 'bg-blue-50 hover:bg-blue-100'
+                          }`}
+                        >
+                          <Shield className="text-blue-500" size={20} />
+                          <div>
+                            <div className={`font-medium ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                              Privacy Policy
+                            </div>
+                            <div className={`text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                              How we protect and use your data
+                            </div>
+                          </div>
+                        </motion.a>
+                        <motion.a
+                          href="/terms"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          whileHover={{ scale: 1.02 }}
+                          className={`w-full p-3 rounded-lg text-left flex items-center gap-3 transition-colors ${
+                            darkMode ? 'bg-green-900/30 hover:bg-green-900/50' : 'bg-green-50 hover:bg-green-100'
+                          }`}
+                        >
+                          <FileText className="text-green-500" size={20} />
+                          <div>
+                            <div className={`font-medium ${darkMode ? 'text-green-300' : 'text-green-700'}`}>
+                              Terms of Service
+                            </div>
+                            <div className={`text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                              Rules and guidelines for using Aurevo
+                            </div>
+                          </div>
+                        </motion.a>
+                      </div>
+                    </div>
+
+                    {/* App Information */}
+                    <div className={`p-4 rounded-lg border ${
+                      darkMode ? 'border-gray-600 bg-gray-700/30' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        App Information
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Version
+                          </span>
+                          <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            1.0.0
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Last Updated
+                          </span>
+                          <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {new Date().toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Platform
+                          </span>
+                          <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            Web Application
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Contact & Support */}
+                    <div className={`p-4 rounded-lg border ${
+                      darkMode ? 'border-gray-600 bg-gray-700/30' : 'border-gray-200 bg-gray-50'
+                    }`}>
+                      <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                        Contact & Support
+                      </h3>
+                      <div className="space-y-3">
+                        <motion.a
+                          href="mailto:support@aurevo.app"
+                          whileHover={{ scale: 1.02 }}
+                          className={`w-full p-3 rounded-lg text-left flex items-center gap-3 transition-colors ${
+                            darkMode ? 'bg-purple-900/30 hover:bg-purple-900/50' : 'bg-purple-50 hover:bg-purple-100'
+                          }`}
+                        >
+                          <Mail className="text-purple-500" size={20} />
+                          <div>
+                            <div className={`font-medium ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
+                              Email Support
+                            </div>
+                            <div className={`text-sm ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                              support@aurevo.app
+                            </div>
+                          </div>
+                        </motion.a>
+                        <motion.a
+                          href="https://github.com/aurevo"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          whileHover={{ scale: 1.02 }}
+                          className={`w-full p-3 rounded-lg text-left flex items-center gap-3 transition-colors ${
+                            darkMode ? 'bg-gray-800/50 hover:bg-gray-700/50' : 'bg-gray-100 hover:bg-gray-200'
+                          }`}
+                        >
+                          <Smartphone className="text-gray-500" size={20} />
+                          <div>
+                            <div className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              GitHub Repository
+                            </div>
+                            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                              Open source code and issues
+                            </div>
+                          </div>
+                        </motion.a>
                       </div>
                     </div>
                   </motion.div>

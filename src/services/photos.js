@@ -4,18 +4,18 @@
  * Provides access to Google Photos library and free stock images
  */
 
-// API Configuration
+// API Configuration (Vite uses VITE_ prefix)
 const GOOGLE_PHOTOS_SCOPE = 'https://www.googleapis.com/auth/photoslibrary.readonly'
-const UNSPLASH_ACCESS_KEY = import.meta.env.REACT_APP_UNSPLASH_ACCESS_KEY || 'your-unsplash-key'
-const PEXELS_API_KEY = import.meta.env.REACT_APP_PEXELS_API_KEY || 'your-pexels-key'
+const UNSPLASH_ACCESS_KEY = import.meta.env.VITE_UNSPLASH_ACCESS_KEY || 'your-unsplash-key'
+const PEXELS_API_KEY = import.meta.env.VITE_PEXELS_API_KEY || 'your-pexels-key'
 
 let gapi = null
 let isPhotosInitialized = false
 
 // Check if Google Photos is configured
 const isGooglePhotosConfigured = () => {
-  return import.meta.env.REACT_APP_GOOGLE_CLIENT_ID && 
-         import.meta.env.REACT_APP_GOOGLE_CLIENT_ID !== 'your-client-id'
+  return import.meta.env.VITE_GOOGLE_CLIENT_ID && 
+         import.meta.env.VITE_GOOGLE_CLIENT_ID !== 'your-client-id'
 }
 
 /**
@@ -24,7 +24,7 @@ const isGooglePhotosConfigured = () => {
 export async function initGooglePhotos() {
   try {
     if (!isGooglePhotosConfigured()) {
-      throw new Error('Google Photos API not configured. Please update your .env file with valid REACT_APP_GOOGLE_CLIENT_ID')
+      throw new Error('Google Photos API not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env')
     }
 
     if (!window.gapi) {
@@ -34,13 +34,24 @@ export async function initGooglePhotos() {
     gapi = window.gapi
     
     if (!isPhotosInitialized) {
-      await gapi.load('auth2:client', async () => {
-        await gapi.client.init({
-          clientId: import.meta.env.REACT_APP_GOOGLE_CLIENT_ID,
-          scope: GOOGLE_PHOTOS_SCOPE,
-          discoveryDocs: ['https://photoslibrary.googleapis.com/$discovery/rest?version=v1']
-        })
-        isPhotosInitialized = true
+      await new Promise((resolve, reject) => {
+        try {
+          gapi.load('client:auth2', async () => {
+            try {
+              await gapi.client.init({
+                clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+                scope: GOOGLE_PHOTOS_SCOPE,
+                discoveryDocs: ['https://photoslibrary.googleapis.com/$discovery/rest?version=v1']
+              })
+              isPhotosInitialized = true
+              resolve()
+            } catch (e) {
+              reject(e)
+            }
+          })
+        } catch (e) {
+          reject(e)
+        }
       })
     }
 

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Github, Chrome, Languages, Sun, Moon } from 'lucide-react'
 import { signInGoogle, signInGithub } from '../hooks_useAuth'
 import { useAppStore } from '../store'
+import Footer from '../components/Footer'
 
 const languageOptions = [
   { code: 'en', name: 'English', flag: '🇺🇸' },
@@ -50,11 +51,12 @@ export default function Login() {
   }
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-6 transition-colors duration-300 ${
+    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${
       darkMode 
         ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900' 
         : 'bg-gradient-to-br from-violet-100 via-sky-100 to-rose-100'
     }`}>
+      <div className="flex-1 flex items-center justify-center p-6">
       {/* Language and Theme Controls */}
       <div className="fixed top-4 right-4 flex items-center gap-3 z-50">
         <div className="relative">
@@ -216,9 +218,15 @@ export default function Login() {
 
         {/* Privacy Notice */}
         <p className={`text-xs text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          By continuing you agree to our Terms and Privacy Policy.
+          By continuing you agree to our{' '}
+          <a href="/terms" className="underline hover:no-underline">Terms of Service</a>
+          {' '}and{' '}
+          <a href="/privacy" className="underline hover:no-underline">Privacy Policy</a>.
         </p>
       </motion.div>
+      </div>
+      
+      <Footer />
     </div>
   )
 }

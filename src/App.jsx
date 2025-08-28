@@ -12,14 +12,23 @@ import Goals from './routes/Goals'
 import Reports from './routes/Reports'
 import Profile from './routes/Profile'
 import Settings from './routes/Settings'
+import PrivacyPolicy from './routes/PrivacyPolicy'
+import TermsOfService from './routes/TermsOfService'
 import { useAuth } from './hooks_useAuth'
-import { useAppStore } from './store'
+import { useAppStore, useNotificationStore } from './store'
+import { useEffect } from 'react'
 import './i18n'
 
 export default function App() {
   const { user, loading } = useAuth()
   const { darkMode } = useAppStore()
+  const { initializeNotifications } = useNotificationStore()
   const { t } = useTranslation()
+
+  // Initialize notifications when app starts
+  useEffect(() => {
+    initializeNotifications()
+  }, [])
 
   if (loading) {
     return (
@@ -47,6 +56,8 @@ export default function App() {
           <Route path="/reports" element={user ? <Reports /> : <Navigate to="/login" />} />
           <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
           <Route path="/settings" element={user ? <Settings /> : <Navigate to="/login" />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
         

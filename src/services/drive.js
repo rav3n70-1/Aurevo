@@ -4,9 +4,9 @@
  * Provides file upload, download, and management capabilities
  */
 
-// Google API configuration
-const GOOGLE_API_KEY = import.meta.env.REACT_APP_GOOGLE_API_KEY || 'your-api-key'
-const CLIENT_ID = import.meta.env.REACT_APP_GOOGLE_CLIENT_ID || 'your-client-id'
+// Google API configuration (Vite uses VITE_ prefix)
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || 'your-api-key'
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-client-id'
 const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
 const SCOPES = 'https://www.googleapis.com/auth/drive.file'
 
@@ -24,7 +24,7 @@ const isGoogleApiConfigured = () => {
 export async function initDrive() {
   try {
     if (!isGoogleApiConfigured()) {
-      throw new Error('Google Drive API credentials not configured. Please update your .env file with valid REACT_APP_GOOGLE_API_KEY and REACT_APP_GOOGLE_CLIENT_ID')
+      throw new Error('Google Drive API credentials not configured. Please set VITE_GOOGLE_API_KEY and VITE_GOOGLE_CLIENT_ID in your .env')
     }
 
     // Load Google API script if not already loaded
@@ -35,14 +35,25 @@ export async function initDrive() {
     gapi = window.gapi
     
     if (!isInitialized) {
-      await gapi.load('auth2:client', async () => {
-        await gapi.client.init({
-          apiKey: GOOGLE_API_KEY,
-          clientId: CLIENT_ID,
-          discoveryDocs: DISCOVERY_DOCS,
-          scope: SCOPES
-        })
-        isInitialized = true
+      await new Promise((resolve, reject) => {
+        try {
+          gapi.load('client:auth2', async () => {
+            try {
+              await gapi.client.init({
+                apiKey: GOOGLE_API_KEY,
+                clientId: CLIENT_ID,
+                discoveryDocs: DISCOVERY_DOCS,
+                scope: SCOPES
+              })
+              isInitialized = true
+              resolve()
+            } catch (e) {
+              reject(e)
+            }
+          })
+        } catch (e) {
+          reject(e)
+        }
       })
     }
 
