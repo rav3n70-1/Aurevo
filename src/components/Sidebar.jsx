@@ -270,6 +270,7 @@ export default function Sidebar() {
       <motion.button
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
+        onClick={() => navigate('/settings')}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
           darkMode 
             ? 'text-gray-300 hover:bg-gray-700 hover:text-white' 

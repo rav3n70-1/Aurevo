@@ -49,6 +49,8 @@ export const useAppStore = create(
           if (leveledUp) {
             toast.success(`🎉 Level up! You reached level ${newLevel}!`);
             // Award shine points for leveling up
+            // Sync to Firebase after state update
+            setTimeout(() => get().syncProfile(), 100);
             return { 
               xp: newXP, 
               level: newLevel, 
@@ -56,9 +58,14 @@ export const useAppStore = create(
             };
           }
           
+          // Sync to Firebase after state update
+          setTimeout(() => get().syncProfile(), 100);
           return { xp: newXP, level: newLevel };
         }),
-        addShinePoints: (points) => set((state) => ({ shinePoints: state.shinePoints + points })),
+        addShinePoints: (points) => set((state) => {
+          setTimeout(() => get().syncProfile(), 100);
+          return { shinePoints: state.shinePoints + points };
+        }),
         updateStreak: (type, count) => set((state) => ({
           streaks: { ...state.streaks, [type]: count }
         })),
@@ -150,11 +157,29 @@ export const useAppStore = create(
         partialize: (state) => ({
           language: state.language,
           darkMode: state.darkMode,
-          notifications: state.notifications
+          notifications: state.notifications,
+          // Include gamification data in local storage
+          xp: state.xp,
+          level: state.level,
+          shinePoints: state.shinePoints,
+          streaks: state.streaks,
+          currentAvatar: state.currentAvatar
         })
       }
     )
   )
+);
+
+// Subscribe to XP changes and sync
+useAppStore.subscribe(
+  (state) => state.xp,
+  () => {
+    // Debounce sync to avoid too many writes
+    clearTimeout(useAppStore.syncTimeout);
+    useAppStore.syncTimeout = setTimeout(() => {
+      useAppStore.getState().syncProfile();
+    }, 1000);
+  }
 );
 
 // Mood tracking store
@@ -173,12 +198,62 @@ export const useMoodStore = create((set, get) => ({
     
     set({ isLoading: true });
     try {
+      // Enforce 1-hour cooldown between mood logs
+      const now = new Date();
+      let lastLogTs = null;
+      const state = get();
+      if (state.moodLogs && state.moodLogs.length > 0) {
+        const mostRecent = state.moodLogs[0];
+        lastLogTs = mostRecent.timestamp?.toDate?.() || new Date(mostRecent.timestamp);
+      } else {
+        // If local state empty, check Firestore for the latest entry
+        let latestQuery = query(
+          collection(db, COLLECTIONS.MOOD_LOGS),
+          where('userId', '==', user.uid),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
+        let latestSnap;
+        try {
+          latestSnap = await getDocs(latestQuery);
+        } catch (indexError) {
+          // Fallback without orderBy
+          latestQuery = query(
+            collection(db, COLLECTIONS.MOOD_LOGS),
+            where('userId', '==', user.uid),
+            limit(10)
+          );
+          latestSnap = await getDocs(latestQuery);
+        }
+        if (!latestSnap.empty) {
+          // Find most recent manually if we couldn't sort in query
+          let mostRecent = latestSnap.docs[0].data();
+          latestSnap.docs.forEach(doc => {
+            const data = doc.data();
+            const ts = data.timestamp?.toDate?.() || new Date(data.timestamp);
+            const currentTs = mostRecent.timestamp?.toDate?.() || new Date(mostRecent.timestamp);
+            if (ts > currentTs) mostRecent = data;
+          });
+          lastLogTs = mostRecent.timestamp?.toDate?.() || new Date(mostRecent.timestamp);
+        }
+      }
+
+      if (lastLogTs) {
+        const diffMs = now - lastLogTs;
+        const oneHourMs = 60 * 60 * 1000;
+        if (diffMs < oneHourMs) {
+          const minutesLeft = Math.ceil((oneHourMs - diffMs) / (60 * 1000));
+          toast.error(`Please wait ${minutesLeft} more minute(s) before logging again.`);
+          return;
+        }
+      }
+
       const moodLog = {
         userId: user.uid,
         mood: moodData.mood,
         intensity: moodData.intensity,
         notes: moodData.notes || '',
-        timestamp: new Date(),
+        timestamp: now,
         tags: moodData.tags || []
       };
       
@@ -364,7 +439,7 @@ export const useWellnessStore = create((set, get) => ({
       };
       
       // Check if entry for today already exists
-      const existingQuery = query(
+      let existingQuery = query(
         collection(db, COLLECTIONS.WELLNESS_DATA),
         where('userId', '==', user.uid),
         where('date', '==', today),
@@ -372,7 +447,19 @@ export const useWellnessStore = create((set, get) => ({
         limit(1)
       );
       
-      const existingSnapshot = await getDocs(existingQuery);
+      let existingSnapshot;
+      try {
+        existingSnapshot = await getDocs(existingQuery);
+      } catch (indexError) {
+        // Fallback without orderBy
+        existingQuery = query(
+          collection(db, COLLECTIONS.WELLNESS_DATA),
+          where('userId', '==', user.uid),
+          where('date', '==', today),
+          limit(1)
+        );
+        existingSnapshot = await getDocs(existingQuery);
+      }
       
       if (!existingSnapshot.empty) {
         // Update existing entry
@@ -394,7 +481,7 @@ export const useWellnessStore = create((set, get) => ({
     set({ isLoading: true });
     try {
       const today = new Date().toDateString();
-      const wellnessQuery = query(
+      let wellnessQuery = query(
         collection(db, COLLECTIONS.WELLNESS_DATA),
         where('userId', '==', user.uid),
         where('date', '==', today),
@@ -402,7 +489,19 @@ export const useWellnessStore = create((set, get) => ({
         limit(1)
       );
       
-      const snapshot = await getDocs(wellnessQuery);
+      let snapshot;
+      try {
+        snapshot = await getDocs(wellnessQuery);
+      } catch (indexError) {
+        // Fallback without orderBy
+        wellnessQuery = query(
+          collection(db, COLLECTIONS.WELLNESS_DATA),
+          where('userId', '==', user.uid),
+          where('date', '==', today),
+          limit(1)
+        );
+        snapshot = await getDocs(wellnessQuery);
+      }
       if (!snapshot.empty) {
         const data = snapshot.docs[0].data();
         set({
@@ -668,15 +767,35 @@ export const useTaskStore = create((set, get) => ({
     
     set({ isLoading: true });
     try {
-      const tasksQuery = query(
+      // Try with orderBy first (requires index)
+      let tasksQuery = query(
         collection(db, COLLECTIONS.TASKS),
         where('userId', '==', user.uid),
         orderBy('createdAt', 'desc'),
         limit(100)
       );
       
-      const snapshot = await getDocs(tasksQuery);
+      let snapshot;
+      try {
+        snapshot = await getDocs(tasksQuery);
+      } catch (indexError) {
+        console.warn('Tasks index not available, falling back to simple query:', indexError.message);
+        // Fallback without orderBy
+        tasksQuery = query(
+          collection(db, COLLECTIONS.TASKS),
+          where('userId', '==', user.uid),
+          limit(100)
+        );
+        snapshot = await getDocs(tasksQuery);
+      }
+      
       const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sort in JS if we couldn't sort in Firestore
+      tasks.sort((a, b) => {
+        const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt);
+        const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt);
+        return bTime - aTime;
+      });
       
       set({ tasks });
     } catch (error) {
@@ -737,6 +856,74 @@ export const useTaskStore = create((set, get) => ({
       // Provide empty array as fallback
       set({ studySessions: [] });
       toast.error('Study sessions loaded with limited data');
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  // Goals
+  addGoal: async (goalData) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    try {
+      const newGoal = {
+        userId: user.uid,
+        title: goalData.title,
+        description: goalData.description || '',
+        category: goalData.category || 'general',
+        progress: Math.max(0, Math.min(100, goalData.progress ?? 0)),
+        deadline: goalData.deadline || null,
+        createdAt: new Date(),
+        completed: false
+      };
+      const docRef = await addDoc(collection(db, COLLECTIONS.GOALS), newGoal);
+      set((state) => ({ goals: [{ id: docRef.id, ...newGoal }, ...state.goals] }));
+      toast.success('Goal added successfully!');
+    } catch (error) {
+      console.error('Error adding goal:', error);
+      toast.error('Failed to add goal');
+    }
+  },
+
+  loadGoals: async () => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    set({ isLoading: true });
+    try {
+      // Try with orderBy first (requires index)
+      let goalsQuery = query(
+        collection(db, COLLECTIONS.GOALS),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc'),
+        limit(100)
+      );
+      
+      let snapshot;
+      try {
+        snapshot = await getDocs(goalsQuery);
+      } catch (indexError) {
+        console.warn('Goals index not available, falling back to simple query:', indexError.message);
+        // Fallback without orderBy
+        goalsQuery = query(
+          collection(db, COLLECTIONS.GOALS),
+          where('userId', '==', user.uid),
+          limit(100)
+        );
+        snapshot = await getDocs(goalsQuery);
+      }
+      
+      const goals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Sort in JS if we couldn't sort in Firestore
+      goals.sort((a, b) => {
+        const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt);
+        const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt);
+        return bTime - aTime;
+      });
+      
+      set({ goals });
+    } catch (error) {
+      console.error('Error loading goals:', error);
+      toast.error('Failed to load goals');
     } finally {
       set({ isLoading: false });
     }

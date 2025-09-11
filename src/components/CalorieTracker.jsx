@@ -41,13 +41,23 @@ export default function CalorieTracker() {
   const [showAddFood, setShowAddFood] = useState(false)
   const [dailyGoal] = useState(2000) // This would be configurable based on user profile
   const [todaysMeals, setTodaysMeals] = useState([])
+  const [customFoods, setCustomFoods] = useState([])
 
   const progress = Math.min(100, (calories / dailyGoal) * 100)
   const remaining = Math.max(0, dailyGoal - calories)
 
-  const filteredFoods = COMMON_FOODS.filter(food =>
+  const allFoods = [...customFoods, ...COMMON_FOODS]
+  const filteredFoods = allFoods.filter(food =>
     food.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  useEffect(() => {
+    // Load custom foods from localStorage
+    try {
+      const saved = JSON.parse(localStorage.getItem('aurevo-custom-foods') || '[]')
+      if (Array.isArray(saved)) setCustomFoods(saved)
+    } catch {}
+  }, [])
 
   useEffect(() => {
     const saveTimeout = setTimeout(() => {
@@ -88,6 +98,12 @@ export default function CalorieTracker() {
         emoji: '🍽️',
         category: 'custom'
       }
+      // Add to custom foods list and persist
+      setCustomFoods(prev => {
+        const updated = [food, ...prev]
+        try { localStorage.setItem('aurevo-custom-foods', JSON.stringify(updated)) } catch {}
+        return updated
+      })
       addFood(food)
       setCustomFood({ name: '', calories: '' })
       setShowAddFood(false)

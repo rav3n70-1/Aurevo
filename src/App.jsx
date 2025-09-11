@@ -16,7 +16,7 @@ import PrivacyPolicy from './routes/PrivacyPolicy'
 import TermsOfService from './routes/TermsOfService'
 import LandingPage from './routes/LandingPage'
 import { useAuth } from './hooks_useAuth'
-import { useAppStore, useNotificationStore } from './store'
+import { useAppStore, useNotificationStore, useMoodStore, useWellnessStore, useTaskStore } from './store'
 import { useEffect } from 'react'
 import './i18n'
 
@@ -24,12 +24,31 @@ export default function App() {
   const { user, loading } = useAuth()
   const { darkMode } = useAppStore()
   const { initializeNotifications } = useNotificationStore()
+  const { loadMoodData } = useMoodStore()
+  const { initializeWellnessData } = useWellnessStore()
+  const { loadStudySessionsHistory } = useTaskStore()
   const { t } = useTranslation()
 
   // Initialize notifications when app starts
   useEffect(() => {
     initializeNotifications()
   }, [])
+
+  // Load core data once user is available to keep dashboard/sidebar stats consistent
+  useEffect(() => {
+    if (!user) return
+    ;(async () => {
+      try {
+        await Promise.all([
+          loadMoodData(),
+          initializeWellnessData(),
+          loadStudySessionsHistory(14)
+        ])
+      } catch (e) {
+        console.error('Failed to initialize core data:', e)
+      }
+    })()
+  }, [user, loadMoodData, initializeWellnessData, loadStudySessionsHistory])
 
   if (loading) {
     return (
