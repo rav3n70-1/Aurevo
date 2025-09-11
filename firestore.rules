@@ -164,6 +164,52 @@ service cloud.firestore {
       allow update: if isValidUpdate();
       allow delete: if isAuthenticated() && isResourceOwner();
     }
+
+    // Social posts
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isValidCreate() &&
+                       request.resource.data.content is string &&
+                       request.resource.data.content.size() > 0;
+      // Owner can edit any of their own fields
+      allow update: if isValidUpdate() || (
+        // Allow authenticated users to update likes only (owner unchanged)
+        isAuthenticated() &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.content == resource.data.content &&
+        request.resource.data.displayName == resource.data.displayName &&
+        request.resource.data.avatar == resource.data.avatar &&
+        request.resource.data.mediaUrls == resource.data.mediaUrls &&
+        request.resource.data.tags == resource.data.tags &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.timestamp == resource.data.timestamp
+      );
+      allow delete: if isAuthenticated() && isResourceOwner();
+    }
+
+    // Social post comments
+    match /postComments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if isValidCreate() &&
+                       request.resource.data.postId is string &&
+                       request.resource.data.content is string &&
+                       request.resource.data.content.size() > 0;
+      // Owner can edit own comment
+      allow update: if isValidUpdate() || (
+        // Allow authenticated users to update reactions only on comments
+        isAuthenticated() &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.postId == resource.data.postId &&
+        request.resource.data.content == resource.data.content &&
+        request.resource.data.displayName == resource.data.displayName &&
+        request.resource.data.avatar == resource.data.avatar &&
+        request.resource.data.parentId == resource.data.parentId &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.timestamp == resource.data.timestamp
+      );
+      // Delete by comment owner or post owner (requires postOwnerId on comment)
+      allow delete: if isAuthenticated() && (isResourceOwner() || request.auth.uid == resource.data.postOwnerId);
+    }
     
     // Deny all other requests
     match /{document=**} {

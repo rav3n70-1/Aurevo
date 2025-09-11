@@ -54,11 +54,11 @@ const AnimatedCounter = ({ value, duration = 1 }) => {
   
   useEffect(() => {
     let start = 0
-    const end = parseInt(value)
+    const end = parseInt(value) || 0
     if (start === end) return
 
     let totalMilSecDur = duration * 1000
-    let incrementTime = (totalMilSecDur / end) * 1000
+    let incrementTime = Math.max(10, totalMilSecDur / end)
 
     let timer = setInterval(() => {
       start += 1
@@ -72,8 +72,8 @@ const AnimatedCounter = ({ value, duration = 1 }) => {
   return <span>{count}</span>
 }
 
-// Celebration Confetti Component
-const CelebrationConfetti = ({ show, onComplete }) => {
+// Celebration Component
+const CelebrationFireworks = ({ show, onComplete }) => {
   useEffect(() => {
     if (show) {
       const timer = setTimeout(onComplete, 3000)
@@ -83,7 +83,7 @@ const CelebrationConfetti = ({ show, onComplete }) => {
 
   if (!show) return null
 
-  const confettiPieces = Array.from({ length: 50 }, (_, i) => ({
+  const pieces = Array.from({ length: 50 }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
     color: ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57'][Math.floor(Math.random() * 5)]
@@ -91,7 +91,7 @@ const CelebrationConfetti = ({ show, onComplete }) => {
 
   return (
     <div className="fixed inset-0 pointer-events-none z-50">
-      {confettiPieces.map((piece) => (
+      {pieces.map((piece) => (
         <motion.div
           key={piece.id}
           className="absolute w-2 h-2 rounded"
@@ -109,7 +109,21 @@ const CelebrationConfetti = ({ show, onComplete }) => {
   )
 }
 
-// Goal Templates
+const PRIORITIES = [
+  { value: 'low', label: 'Low', color: 'text-green-600', bgColor: 'bg-green-100', darkBgColor: 'bg-green-900/30' },
+  { value: 'medium', label: 'Medium', color: 'text-yellow-600', bgColor: 'bg-yellow-100', darkBgColor: 'bg-yellow-900/30' },
+  { value: 'high', label: 'High', color: 'text-red-600', bgColor: 'bg-red-100', darkBgColor: 'bg-red-900/30' }
+]
+
+const CATEGORIES = [
+  { value: 'general', label: 'General', color: 'text-gray-600', bgColor: 'bg-gray-100', icon: '📋' },
+  { value: 'health', label: 'Health', color: 'text-green-600', bgColor: 'bg-green-100', icon: '💚' },
+  { value: 'academic', label: 'Academic', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: '🎓' },
+  { value: 'career', label: 'Career', color: 'text-purple-600', bgColor: 'bg-purple-100', icon: '💼' },
+  { value: 'personal', label: 'Personal', color: 'text-pink-600', bgColor: 'bg-pink-100', icon: '✨' },
+  { value: 'finance', label: 'Finance', color: 'text-emerald-600', bgColor: 'bg-emerald-100', icon: '💰' }
+]
+
 const GOAL_TEMPLATES = [
   {
     id: 'fitness',
@@ -153,21 +167,6 @@ const GOAL_TEMPLATES = [
   }
 ]
 
-const PRIORITIES = [
-  { value: 'low', label: 'Low', color: 'text-green-600', bgColor: 'bg-green-100', darkBgColor: 'bg-green-900/30', glowColor: 'shadow-green-500/20' },
-  { value: 'medium', label: 'Medium', color: 'text-yellow-600', bgColor: 'bg-yellow-100', darkBgColor: 'bg-yellow-900/30', glowColor: 'shadow-yellow-500/20' },
-  { value: 'high', label: 'High', color: 'text-red-600', bgColor: 'bg-red-100', darkBgColor: 'bg-red-900/30', glowColor: 'shadow-red-500/20' }
-]
-
-const CATEGORIES = [
-  { value: 'general', label: 'General', color: 'text-gray-600', bgColor: 'bg-gray-100', icon: '📋' },
-  { value: 'health', label: 'Health', color: 'text-green-600', bgColor: 'bg-green-100', icon: '💚' },
-  { value: 'academic', label: 'Academic', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: '🎓' },
-  { value: 'career', label: 'Career', color: 'text-purple-600', bgColor: 'bg-purple-100', icon: '💼' },
-  { value: 'personal', label: 'Personal', color: 'text-pink-600', bgColor: 'bg-pink-100', icon: '✨' },
-  { value: 'finance', label: 'Finance', color: 'text-emerald-600', bgColor: 'bg-emerald-100', icon: '💰' }
-]
-
 export default function Goals() {
   const { t } = useTranslation()
   const { darkMode, isLoading, user } = useAppStore()
@@ -185,8 +184,13 @@ export default function Goals() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterPriority, setFilterPriority] = useState('all')
   const [sortBy, setSortBy] = useState('created')
-  const [viewMode, setViewMode] = useState('grid') // grid or list
+  const [viewMode, setViewMode] = useState('grid')
   const [selectedGoals, setSelectedGoals] = useState(new Set())
+  const [activeTab, setActiveTab] = useState('all') // all | active | completed | overdue
+  const [showFilters, setShowFilters] = useState(false)
+  const [groupByCategory, setGroupByCategory] = useState(false)
+  const [editingInlineId, setEditingInlineId] = useState(null)
+  const [inlineForm, setInlineForm] = useState({ title: '', description: '', priority: 'medium' })
   
   // Form State
   const [form, setForm] = useState({ 
@@ -200,14 +204,11 @@ export default function Goals() {
     timeEstimate: 30
   })
 
-  // Animation controls
-  const controls = useAnimation()
-
   useEffect(() => {
     if (user) loadGoals()
   }, [user, loadGoals])
 
-  // Enhanced Statistics with animations
+  // Statistics with animations
   const stats = useMemo(() => {
     const active = goals.filter(g => !g.completed).length
     const completed = goals.filter(g => g.completed).length
@@ -232,34 +233,29 @@ export default function Goals() {
     return { active, completed, overdue, thisMonth, avgProgress, highPriorityCount }
   }, [goals])
 
-  // Filtered and sorted goals with enhanced sorting
+  // Filtered and sorted goals
   const filteredGoals = useMemo(() => {
+    const statusToUse = activeTab === 'all' ? filterStatus : (activeTab === 'active' ? 'active' : activeTab)
     let filtered = goals.filter(goal => {
-      // Search filter
       if (searchTerm && !goal.title.toLowerCase().includes(searchTerm.toLowerCase()) && 
           !goal.description?.toLowerCase().includes(searchTerm.toLowerCase())) {
         return false
       }
       
-      // Category filter
       if (filterCategory !== 'all' && goal.category !== filterCategory) return false
-      
-      // Status filter
-      if (filterStatus === 'completed' && !goal.completed) return false
-      if (filterStatus === 'active' && goal.completed) return false
-      if (filterStatus === 'overdue') {
+      if (statusToUse === 'completed' && !goal.completed) return false
+      if (statusToUse === 'active' && goal.completed) return false
+      if (statusToUse === 'overdue') {
         if (goal.completed || !goal.deadline) return false
         const deadline = new Date(goal.deadline?.toDate?.() || goal.deadline)
         if (deadline >= new Date()) return false
       }
       
-      // Priority filter
       if (filterPriority !== 'all' && goal.priority !== filterPriority) return false
       
       return true
     })
 
-    // Enhanced sort goals
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'priority':
@@ -285,7 +281,7 @@ export default function Goals() {
     })
 
     return filtered
-  }, [goals, searchTerm, filterCategory, filterStatus, filterPriority, sortBy])
+  }, [goals, searchTerm, filterCategory, filterStatus, filterPriority, sortBy, activeTab])
 
   const handleCreate = async () => {
     if (!form.title.trim()) return
@@ -302,7 +298,6 @@ export default function Goals() {
     resetForm()
     setShowNewGoal(false)
     
-    // Trigger celebration for first goal
     if (goals.length === 0) {
       setShowCelebration(true)
     }
@@ -371,7 +366,6 @@ export default function Goals() {
     const oldProgress = goals.find(g => g.id === goalId)?.progress || 0
     await updateGoalProgress(goalId, newProgress)
     
-    // Celebration on completion
     if (newProgress === 100 && oldProgress < 100) {
       setShowCelebration(true)
     }
@@ -380,16 +374,6 @@ export default function Goals() {
   const handleDelete = async (goalId) => {
     if (window.confirm('Are you sure you want to delete this goal?')) {
       await deleteGoal(goalId)
-    }
-  }
-
-  const handleBulkDelete = async () => {
-    if (selectedGoals.size === 0) return
-    if (window.confirm(`Delete ${selectedGoals.size} selected goals?`)) {
-      for (const goalId of selectedGoals) {
-        await deleteGoal(goalId)
-      }
-      setSelectedGoals(new Set())
     }
   }
 
@@ -452,6 +436,59 @@ export default function Goals() {
     }))
   }
 
+  const startInlineEdit = (goal) => {
+    setEditingInlineId(goal.id)
+    setInlineForm({ title: goal.title || '', description: goal.description || '', priority: goal.priority || 'medium' })
+  }
+
+  const saveInlineEdit = async () => {
+    if (!editingInlineId) return
+    await updateGoal(editingInlineId, {
+      title: inlineForm.title.trim() || 'Untitled Goal',
+      description: inlineForm.description,
+      priority: inlineForm.priority
+    })
+    setEditingInlineId(null)
+  }
+
+  const cancelInlineEdit = () => {
+    setEditingInlineId(null)
+  }
+
+  const toggleSelect = (goalId) => {
+    setSelectedGoals((prev) => {
+      const next = new Set(prev)
+      if (next.has(goalId)) next.delete(goalId)
+      else next.add(goalId)
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedGoals(new Set())
+
+  const bulkComplete = async () => {
+    for (const id of selectedGoals) {
+      const g = goals.find(x => x.id === id)
+      if (g && !g.completed) await toggleGoalComplete(id)
+    }
+    clearSelection()
+  }
+
+  const bulkDelete = async () => {
+    if (!window.confirm('Delete selected goals?')) return
+    for (const id of selectedGoals) {
+      await deleteGoal(id)
+    }
+    clearSelection()
+  }
+
+  const bulkSetPriority = async (priority) => {
+    for (const id of selectedGoals) {
+      await updateGoal(id, { priority })
+    }
+    clearSelection()
+  }
+
   if (isLoading) {
     return (
       <div className={`h-screen grid place-items-center ${darkMode ? 'bg-gray-900 text-white' : 'bg-slate-50 text-slate-600'}`}>
@@ -512,6 +549,20 @@ export default function Goals() {
                 >
                   Transform your dreams into achievable milestones with smart goal tracking.
                 </motion.p>
+                {selectedGoals.size > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>{selectedGoals.size} selected</span>
+                    <button onClick={bulkComplete} className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-green-700' : 'bg-green-500 text-white'}`}>Mark Complete</button>
+                    <button onClick={bulkDelete} className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-red-700' : 'bg-red-500 text-white'}`}>Delete</button>
+                    <div className="flex items-center gap-1 text-xs">
+                      <span>Priority:</span>
+                      {['low','medium','high'].map(p => (
+                        <button key={p} onClick={() => bulkSetPriority(p)} className={`px-2 py-1 rounded ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>{p}</button>
+                      ))}
+                    </div>
+                    <button onClick={clearSelection} className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>Clear</button>
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 <motion.button
@@ -542,8 +593,43 @@ export default function Goals() {
               </div>
             </div>
 
+            {/* Redesigned: Tabs and quick toggles */}
+            <div className="flex flex-wrap items-center gap-2 mt-4">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'active', label: 'Active' },
+                { id: 'completed', label: 'Completed' },
+                { id: 'overdue', label: 'Overdue' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    activeTab === tab.id
+                      ? (darkMode ? 'bg-violet-600 border-violet-500 text-white' : 'bg-violet-500 border-violet-400 text-white')
+                      : (darkMode ? 'bg-gray-800/50 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100')
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${darkMode ? 'bg-gray-800/50 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'}`}
+                >
+                  {showFilters ? 'Hide Filters' : 'Show Filters'}
+                </button>
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={groupByCategory} onChange={(e) => setGroupByCategory(e.target.checked)} />
+                  Group by category
+                </label>
+              </div>
+            </div>
+
             {/* Enhanced Search and Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
+            {showFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 mt-3">
               <div className="relative">
                 <Search size={16} className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
                   darkMode ? 'text-gray-400' : 'text-gray-500'
@@ -637,6 +723,7 @@ export default function Goals() {
                 </button>
               </div>
             </div>
+            )}
           </motion.div>
 
           {/* Enhanced Stats Overview with Animated Counters */}
@@ -683,40 +770,7 @@ export default function Goals() {
             ))}
           </div>
 
-          {/* Bulk Actions Bar */}
-          {selectedGoals.size > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`flex items-center justify-between p-4 rounded-lg border ${
-                darkMode ? 'bg-violet-900/20 border-violet-600/30' : 'bg-violet-50 border-violet-200'
-              }`}
-            >
-              <span className={`text-sm font-medium ${darkMode ? 'text-violet-300' : 'text-violet-700'}`}>
-                {selectedGoals.size} goals selected
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleBulkDelete}
-                  className={`px-3 py-1 rounded text-sm transition-colors ${
-                    darkMode ? 'bg-red-600/20 text-red-400 hover:bg-red-600/30' : 'bg-red-100 text-red-600 hover:bg-red-200'
-                  }`}
-                >
-                  Delete Selected
-                </button>
-                <button
-                  onClick={() => setSelectedGoals(new Set())}
-                  className={`px-3 py-1 rounded text-sm transition-colors ${
-                    darkMode ? 'bg-gray-600/20 text-gray-400 hover:bg-gray-600/30' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  Clear Selection
-                </button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Enhanced Goals List/Grid */}
+          {/* Enhanced Goals List */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -731,12 +785,12 @@ export default function Goals() {
               </h3>
             </div>
 
+            {!groupByCategory && (
             <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-4'}>
               {filteredGoals.map((goal, index) => {
                 const priorityConfig = getPriorityConfig(goal.priority)
                 const categoryConfig = getCategoryConfig(goal.category)
                 const deadlineStr = goal.deadline ? new Date(goal.deadline?.toDate?.() || goal.deadline).toLocaleDateString() : null
-                const isSelected = selectedGoals.has(goal.id)
                 
                 return (
                   <motion.div
@@ -747,26 +801,8 @@ export default function Goals() {
                     whileHover={{ scale: 1.02, y: -5 }}
                     className={`p-6 rounded-xl border transition-all duration-200 hover:shadow-lg relative overflow-hidden ${
                       darkMode ? 'bg-gray-700/50 border-gray-600 hover:border-violet-500/50' : 'bg-gray-50/50 border-gray-200 hover:border-violet-300'
-                    } ${goal.completed ? 'opacity-75' : ''} ${isSelected ? 'ring-2 ring-violet-500' : ''} ${priorityConfig.glowColor ? `hover:shadow-lg ${priorityConfig.glowColor}` : ''}`}
+                    } ${goal.completed ? 'opacity-75' : ''}`}
                   >
-                    {/* Selection Checkbox */}
-                    <div className="absolute top-3 left-3">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          const newSelected = new Set(selectedGoals)
-                          if (e.target.checked) {
-                            newSelected.add(goal.id)
-                          } else {
-                            newSelected.delete(goal.id)
-                          }
-                          setSelectedGoals(newSelected)
-                        }}
-                        className="rounded text-violet-600 focus:ring-violet-500"
-                      />
-                    </div>
-
                     {/* Background Gradient */}
                     <div className={`absolute inset-0 bg-gradient-to-br opacity-5 ${
                       goal.priority === 'high' ? 'from-red-500 to-orange-500' :
@@ -774,40 +810,58 @@ export default function Goals() {
                       'from-green-500 to-blue-500'
                     }`} />
 
-                    <div className="relative">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1 ml-6">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="text-2xl">{categoryConfig.icon}</span>
-                            <h4 className={`font-semibold text-lg ${getStatusColor(goal)} ${goal.completed ? 'line-through' : ''}`}>
-                              {goal.title}
-                            </h4>
-                            
-                            {/* Enhanced Badges */}
-                            <div className="flex gap-2">
-                              <span className={`text-xs px-2 py-1 rounded-full font-medium transition-all hover:scale-110 ${
-                                darkMode ? priorityConfig.darkBgColor : priorityConfig.bgColor
-                              } ${priorityConfig.color}`}>
-                                <Flag size={10} className="inline mr-1" />
-                                {priorityConfig.label}
-                              </span>
-                              
-                              {goal.timeEstimate && (
-                                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                  darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-600'
-                                }`}>
-                                  <Clock size={10} className="inline mr-1" />
-                                  {goal.timeEstimate}d
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                                            <div className="relative">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="text-2xl">{categoryConfig.icon}</span>
+                                {editingInlineId === goal.id ? (
+                                  <div className="flex-1">
+                                    <input
+                                      value={inlineForm.title}
+                                      onChange={(e) => setInlineForm(prev => ({ ...prev, title: e.target.value }))}
+                                      className={`w-full px-2 py-1 rounded border text-lg font-semibold ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                    />
+                                  </div>
+                                ) : (
+                                  <h4 className={`font-semibold text-lg ${getStatusColor(goal)} ${goal.completed ? 'line-through' : ''}`}>
+                                    {goal.title}
+                                  </h4>
+                                )}
+                                
+                                <div className="flex gap-2">
+                                  <span className={`text-xs px-2 py-1 rounded-full font-medium transition-all hover:scale-110 ${
+                                    darkMode ? priorityConfig.darkBgColor : priorityConfig.bgColor
+                                  } ${priorityConfig.color}`}>
+                                    <Flag size={10} className="inline mr-1" />
+                                    {priorityConfig.label}
+                                  </span>
+                                  
+                                  {goal.timeEstimate && (
+                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                      darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-600'
+                                    }`}>
+                                      <Clock size={10} className="inline mr-1" />
+                                      {goal.timeEstimate}d
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
 
-                          {goal.description && (
-                            <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                              {goal.description}
-                            </p>
-                          )}
+                              {editingInlineId === goal.id ? (
+                                <textarea
+                                  value={inlineForm.description}
+                                  onChange={(e) => setInlineForm(prev => ({ ...prev, description: e.target.value }))}
+                                  rows={2}
+                                  className={`w-full mb-3 px-2 py-1 rounded border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                />
+                              ) : (
+                                goal.description && (
+                                  <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    {goal.description}
+                                  </p>
+                                )
+                              )}
 
                           <div className="flex items-center gap-4 text-xs mb-4">
                             {deadlineStr && (
@@ -871,17 +925,40 @@ export default function Goals() {
                             <CheckCircle size={16} />
                           </motion.button>
                           
-                          <motion.button
-                            onClick={() => openEditModal(goal)}
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                            className={`p-2 rounded-lg transition-colors ${
-                              darkMode ? 'text-gray-400 hover:text-blue-400 hover:bg-gray-600' : 'text-gray-500 hover:text-blue-600 hover:bg-gray-100'
-                            }`}
-                            title="Edit goal"
-                          >
-                            <Edit2 size={16} />
-                          </motion.button>
+                          {editingInlineId === goal.id ? (
+                            <>
+                              <motion.button
+                                onClick={saveInlineEdit}
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                className={`p-2 rounded-lg transition-colors ${darkMode ? 'text-green-400 hover:bg-gray-600' : 'text-green-600 hover:bg-gray-100'}`}
+                                title="Save"
+                              >
+                                <CheckCircle size={16} />
+                              </motion.button>
+                              <motion.button
+                                onClick={cancelInlineEdit}
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                className={`p-2 rounded-lg transition-colors ${darkMode ? 'text-gray-400 hover:bg-gray-600' : 'text-gray-500 hover:bg-gray-100'}`}
+                                title="Cancel"
+                              >
+                                <X size={16} />
+                              </motion.button>
+                            </>
+                          ) : (
+                            <motion.button
+                              onClick={() => startInlineEdit(goal)}
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                              className={`p-2 rounded-lg transition-colors ${
+                                darkMode ? 'text-gray-400 hover:text-blue-400 hover:bg-gray-600' : 'text-gray-500 hover:text-blue-600 hover:bg-gray-100'
+                              }`}
+                              title="Inline edit"
+                            >
+                              <Edit2 size={16} />
+                            </motion.button>
+                          )}
 
                           <motion.button
                             onClick={() => handleDuplicateGoal(goal)}
@@ -906,6 +983,9 @@ export default function Goals() {
                           >
                             <Trash2 size={16} />
                           </motion.button>
+
+                          {/* Select checkbox */}
+                          <input type="checkbox" className="ml-2" checked={selectedGoals.has(goal.id)} onChange={() => toggleSelect(goal.id)} />
                         </div>
                       </div>
 
@@ -1010,6 +1090,72 @@ export default function Goals() {
                 </div>
               )}
             </div>
+            )}
+
+            {groupByCategory && (
+              <div className="space-y-6">
+                {Array.from(new Set(filteredGoals.map(g => g.category || 'general'))).map((cat) => {
+                  const catConfig = getCategoryConfig(cat)
+                  const goalsInCat = filteredGoals.filter(g => (g.category || 'general') === cat)
+                  return (
+                    <div key={cat}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xl">{catConfig.icon}</span>
+                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{catConfig.label}</h4>
+                        <span className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>{goalsInCat.length}</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {goalsInCat.map((goal, index) => {
+                          const priorityConfig = getPriorityConfig(goal.priority)
+                          const deadlineStr = goal.deadline ? new Date(goal.deadline?.toDate?.() || goal.deadline).toLocaleDateString() : null
+                          return (
+                            <motion.div
+                              key={goal.id}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: index * 0.03 }}
+                              whileHover={{ scale: 1.02, y: -5 }}
+                              className={`p-6 rounded-xl border transition-all duration-200 hover:shadow-lg relative overflow-hidden ${
+                                darkMode ? 'bg-gray-700/50 border-gray-600 hover:border-violet-500/50' : 'bg-gray-50/50 border-gray-200 hover:border-violet-300'
+                              } ${goal.completed ? 'opacity-75' : ''}`}
+                            >
+                              <div className="relative">
+                                <div className="flex items-start justify-between mb-4">
+                                  <div className="flex-1">
+                                    <h4 className={`font-semibold text-lg ${getStatusColor(goal)} ${goal.completed ? 'line-through' : ''}`}>{goal.title}</h4>
+                                    {goal.description && (
+                                      <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{goal.description}</p>
+                                    )}
+                                    <div className="flex items-center gap-4 text-xs mb-4">
+                                      {deadlineStr && (
+                                        <span className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Due: {deadlineStr}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Progress</span>
+                                    <span className={`text-sm font-bold ${
+                                      (goal.progress || 0) >= 80 ? 'text-green-500' : (goal.progress || 0) >= 50 ? 'text-yellow-500' : 'text-blue-500'
+                                    }`}>{goal.progress || 0}%</span>
+                                  </div>
+                                  <div className={`${darkMode ? 'bg-gray-600' : 'bg-gray-200'} h-2 rounded-full overflow-hidden`}>
+                                    <motion.div className={`h-full ${
+                                      (goal.progress || 0) >= 80 ? 'bg-green-500' : (goal.progress || 0) >= 50 ? 'bg-yellow-500' : 'bg-blue-500'
+                                    }`} initial={{ width: 0 }} animate={{ width: `${goal.progress || 0}%` }} transition={{ duration: 0.8 }} />
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </motion.div>
 
           {/* Goal Insights & Analytics */}
@@ -1094,7 +1240,7 @@ export default function Goals() {
                     </div>
                   </div>
                   <div className={`flex justify-between text-sm ${darkMode ? 'text-yellow-300' : 'text-yellow-600'}`}>
-                    <span>Progress: 1/3</span>
+                    <span>Progress: {stats.completed}/3</span>
                     <span>4 days left</span>
                   </div>
                 </div>
@@ -1105,10 +1251,10 @@ export default function Goals() {
                     Quick Activities
                   </h4>
                   {[
-                    { icon: '📝', title: 'Update 3 Goals Progress', xp: '15 XP', action: () => {} },
+                    { icon: '📝', title: 'Update Goal Progress', xp: '15 XP', action: () => {} },
                     { icon: '⭐', title: 'Set High Priority Goal', xp: '25 XP', action: () => setShowNewGoal(true) },
-                    { icon: '📅', title: 'Add Deadlines to Goals', xp: '20 XP', action: () => {} },
-                    { icon: '🎯', title: 'Complete Daily Goal Review', xp: '30 XP', action: () => {} }
+                    { icon: '📅', title: 'Add Deadlines', xp: '20 XP', action: () => {} },
+                    { icon: '🎯', title: 'Complete Daily Review', xp: '30 XP', action: () => {} }
                   ].map((activity, index) => (
                     <motion.button
                       key={index}
@@ -1499,7 +1645,7 @@ export default function Goals() {
         )}
       </AnimatePresence>
 
-      {/* Edit Goal Modal (similar structure to new goal but with different title) */}
+      {/* Edit Goal Modal */}
       <AnimatePresence>
         {showEditGoal && editingGoal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -1534,145 +1680,60 @@ export default function Goals() {
               </div>
               
               <div className="space-y-6">
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Goal Title *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Enter your goal..."
-                    value={form.title}
-                    onChange={(e) => setForm(prev => ({ ...prev, title: e.target.value }))}
-                    className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 focus:ring-2 focus:ring-violet-500/20 ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-violet-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-violet-500'
-                    }`}
-                  />
-                </div>
+                <input
+                  type="text"
+                  placeholder="Goal title *"
+                  value={form.title}
+                  onChange={(e) => setForm(prev => ({ ...prev, title: e.target.value }))}
+                  className={`w-full px-4 py-3 rounded-lg border ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                  }`}
+                />
                 
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Description
-                  </label>
-                  <textarea
-                    placeholder="Describe your goal in detail..."
-                    value={form.description}
-                    onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
-                    rows={3}
-                    className={`w-full px-4 py-3 rounded-lg border resize-none transition-all duration-200 focus:ring-2 focus:ring-violet-500/20 ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-violet-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-violet-500'
-                    }`}
-                  />
-                </div>
+                <textarea
+                  placeholder="Description..."
+                  value={form.description}
+                  onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  className={`w-full px-4 py-3 rounded-lg border resize-none ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                  }`}
+                />
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Category
-                    </label>
-                    <select
-                      value={form.category}
-                      onChange={(e) => setForm(prev => ({ ...prev, category: e.target.value }))}
-                      className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 focus:ring-2 focus:ring-violet-500/20 ${
-                        darkMode ? 'bg-gray-700 border-gray-600 text-white focus:border-violet-500' : 'bg-white border-gray-300 text-gray-900 focus:border-violet-500'
-                      }`}
-                    >
-                      {CATEGORIES.map(cat => (
-                        <option key={cat.value} value={cat.value}>{cat.icon} {cat.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Priority
-                    </label>
-                    <select
-                      value={form.priority}
-                      onChange={(e) => setForm(prev => ({ ...prev, priority: e.target.value }))}
-                      className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 focus:ring-2 focus:ring-violet-500/20 ${
-                        darkMode ? 'bg-gray-700 border-gray-600 text-white focus:border-violet-500' : 'bg-white border-gray-300 text-gray-900 focus:border-violet-500'
-                      }`}
-                    >
-                      {PRIORITIES.map(priority => (
-                        <option key={priority.value} value={priority.value}>{priority.label}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Time Estimate (days)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="365"
-                      value={form.timeEstimate}
-                      onChange={(e) => setForm(prev => ({ ...prev, timeEstimate: Number(e.target.value) }))}
-                      className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 focus:ring-2 focus:ring-violet-500/20 ${
-                        darkMode ? 'bg-gray-700 border-gray-600 text-white focus:border-violet-500' : 'bg-white border-gray-300 text-gray-900 focus:border-violet-500'
-                      }`}
-                    />
-                  </div>
-                </div>
-                
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Deadline (optional)
-                  </label>
-                  <input
-                    type="date"
-                    value={form.deadline}
-                    onChange={(e) => setForm(prev => ({ ...prev, deadline: e.target.value }))}
-                    className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 focus:ring-2 focus:ring-violet-500/20 ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white focus:border-violet-500' : 'bg-white border-gray-300 text-gray-900 focus:border-violet-500'
+                <div className="grid grid-cols-2 gap-3">
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm(prev => ({ ...prev, category: e.target.value }))}
+                    className={`px-4 py-3 rounded-lg border ${
+                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
                     }`}
-                  />
-                </div>
-
-                {/* Sub-goals Section for Edit */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Sub-goals
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addSubGoal}
-                      className={`text-sm px-3 py-1 rounded-lg transition-colors ${
-                        darkMode ? 'bg-violet-600/20 text-violet-400 hover:bg-violet-600/30' : 'bg-violet-100 text-violet-600 hover:bg-violet-200'
-                      }`}
-                    >
-                      <Plus size={14} className="inline mr-1" />
-                      Add Sub-goal
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    {form.subGoals.map((subGoal, index) => (
-                      <div key={index} className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder={`Sub-goal ${index + 1}`}
-                          value={subGoal}
-                          onChange={(e) => updateSubGoal(index, e.target.value)}
-                          className={`flex-1 px-3 py-2 rounded-lg border transition-all duration-200 focus:ring-2 focus:ring-violet-500/20 ${
-                            darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-violet-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-violet-500'
-                          }`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeSubGoal(index)}
-                          className={`p-2 rounded-lg transition-colors ${
-                            darkMode ? 'text-red-400 hover:bg-red-600/20' : 'text-red-600 hover:bg-red-100'
-                          }`}
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
+                  >
+                    {CATEGORIES.map(cat => (
+                      <option key={cat.value} value={cat.value}>{cat.icon} {cat.label}</option>
                     ))}
-                  </div>
+                  </select>
+                  
+                  <select
+                    value={form.priority}
+                    onChange={(e) => setForm(prev => ({ ...prev, priority: e.target.value }))}
+                    className={`px-4 py-3 rounded-lg border ${
+                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                    }`}
+                  >
+                    {PRIORITIES.map(priority => (
+                      <option key={priority.value} value={priority.value}>{priority.label}</option>
+                    ))}
+                  </select>
                 </div>
+                
+                <input
+                  type="date"
+                  value={form.deadline}
+                  onChange={(e) => setForm(prev => ({ ...prev, deadline: e.target.value }))}
+                  className={`w-full px-4 py-3 rounded-lg border ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                />
                 
                 <div className="flex gap-3 pt-4">
                   <button
@@ -1704,10 +1765,10 @@ export default function Goals() {
         )}
       </AnimatePresence>
 
-      {/* Celebration Confetti */}
-      <CelebrationConfetti 
+      {/* Enhanced Celebration with fireworks */}
+      <CelebrationFireworks 
         show={showCelebration} 
-        onComplete={() => setShowCelebration(false)} 
+        onComplete={() => setShowCelebration(false)}
       />
     </div>
   )

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist, subscribeWithSelector } from 'zustand/middleware';
-import { doc, setDoc, getDoc, updateDoc, collection, addDoc, query, where, orderBy, getDocs, limit, deleteDoc } from 'firebase/firestore';
-import { db, COLLECTIONS } from '../lib/firebase';
+import { doc, setDoc, getDoc, updateDoc, collection, addDoc, query, where, orderBy, getDocs, limit, deleteDoc, serverTimestamp, arrayUnion, arrayRemove, startAfter } from 'firebase/firestore';
+import { db, COLLECTIONS, storage } from '../lib/firebase';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import toast from 'react-hot-toast';
 
 // Main app store
@@ -647,8 +648,70 @@ export const useTaskStore = create((set, get) => ({
   goals: [],
   studySessions: [],
   isLoading: false,
+  savedViews: [],
   
   setLoading: (isLoading) => set({ isLoading }),
+  
+  // Saved views helpers
+  saveView: async ({ name, query }) => {
+    const view = { id: Date.now().toString(), name, query, createdAt: new Date() };
+    set((state) => ({ savedViews: [view, ...state.savedViews] }));
+    toast.success('View saved');
+  },
+  
+  applyView: (viewId) => {
+    const { savedViews } = get();
+    const v = savedViews.find(x => x.id === viewId);
+    return v || null;
+  },
+  
+  filterGoalsByQuery: (query) => {
+    const { goals } = get();
+    if (!query) return goals;
+    const terms = query.split(/\s+/).filter(Boolean);
+    return goals.filter(g => {
+      return terms.every(term => {
+        const [k, v] = term.split(':');
+        if (!v) {
+          return (g.title||'').toLowerCase().includes(k.toLowerCase()) || (g.description||'').toLowerCase().includes(k.toLowerCase());
+        }
+        switch (k) {
+          case 'tag': return (g.tags||[]).includes(v);
+          case 'status': return (g.status || (g.completed ? 'completed' : 'not_started')) === v;
+          case 'priority': return (g.priority||'').toLowerCase() === v.toLowerCase();
+          default: return true;
+        }
+      });
+    });
+  },
+  
+  // Export helpers
+  exportGoalsToCSV: () => {
+    const { goals } = get();
+    const headers = ['id','title','description','progress','status'];
+    const rows = goals.map(g => [g.id, g.title, (g.description||'').replace(/\n/g,' '), g.progress||0, g.status|| (g.completed?'completed':'not_started')]);
+    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'goals.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  },
+  
+  exportGoalsToJSON: () => {
+    const { goals } = get();
+    const blob = new Blob([JSON.stringify(goals, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'goals.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  },
   
   addTask: async (taskData) => {
     const { user } = useAppStore.getState();
@@ -853,12 +916,27 @@ export const useTaskStore = create((set, get) => ({
         updatedAt: new Date(),
         completed: false,
         completedAt: null,
+        // Roadmap fields
+        status: goalData.status || 'not_started', // not_started | in_progress | blocked | completed
+        blocked: false,
+        blockedReason: '',
+        startDate: goalData.startDate || null,
+        endDate: goalData.endDate || null,
+        estimatedDurationDays: goalData.estimatedDurationDays || 14,
+        dependents: [],
         subGoals: goalData.subGoals?.filter(sg => sg.trim()) || [],
         timeEstimate: goalData.timeEstimate || 30,
         streak: 0,
         lastProgressUpdate: new Date(),
         milestones: [],
-        tags: goalData.tags || []
+        tags: goalData.tags || [],
+        dependencies: [], // New: for dependencies graph
+        comments: [], // Collaboration stub
+        attachments: [], // Files stub
+        notes: goalData.notes || '',
+        reminders: [],
+        isTemplate: false,
+        templateId: null
       };
       const docRef = await addDoc(collection(db, COLLECTIONS.GOALS), newGoal);
       set((state) => ({ goals: [{ id: docRef.id, ...newGoal }, ...state.goals] }));
@@ -1055,31 +1133,276 @@ export const useTaskStore = create((set, get) => ({
         }, 0) / completed.length
       : 0;
 
-    const categoryStats = CATEGORIES.map(cat => ({
-      category: cat.value,
-      label: cat.label,
-      icon: cat.icon,
-      total: goals.filter(g => g.category === cat.value).length,
-      completed: goals.filter(g => g.category === cat.value && g.completed).length,
-      avgProgress: goals.filter(g => g.category === cat.value).reduce((sum, g) => sum + (g.progress || 0), 0) / Math.max(1, goals.filter(g => g.category === cat.value).length)
-    })).filter(stat => stat.total > 0);
+    // Derive categories from goals
+    const categorySet = new Set(goals.map(g => g.category).filter(Boolean));
+    const categoryStats = Array.from(categorySet).map(cat => {
+      const inCat = goals.filter(g => g.category === cat);
+      const total = inCat.length;
+      const completedCount = inCat.filter(g => g.completed).length;
+      const avgProgress = inCat.reduce((sum, g) => sum + (g.progress || 0), 0) / Math.max(1, total);
+      return { category: cat, label: cat, total, completed: completedCount, avgProgress };
+    }).filter(stat => stat.total > 0);
+
+    // Velocity: completed goals last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7*24*60*60*1000);
+    const completedLast7 = completed.filter(g => (g.completedAt?.toDate?.() || new Date(g.completedAt)) >= sevenDaysAgo).length;
+    // At-risk: active goals within 3 days of deadline and progress < 50
+    const atRisk = active.filter(g => g.deadline && (new Date(g.deadline?.toDate?.() || g.deadline) - new Date()) < 3*24*60*60*1000 && (g.progress||0) < 50);
 
     return {
       totalGoals: goals.length,
       completionRate: goals.length > 0 ? (completed.length / goals.length * 100) : 0,
       avgCompletionTime: Math.round(avgCompletionTime),
       categoryStats,
-      currentStreak: 0, // Can implement streak calculation
-      longestStreak: 0, // Can implement streak calculation
+      currentStreak: 0,
+      longestStreak: 0,
       upcomingDeadlines: active.filter(g => g.deadline).sort((a, b) => {
         const aDate = new Date(a.deadline?.toDate?.() || a.deadline);
         const bDate = new Date(b.deadline?.toDate?.() || b.deadline);
         return aDate - bDate;
-      }).slice(0, 5)
+      }).slice(0, 5),
+      velocity7d: completedLast7,
+      atRisk: atRisk
     };
   },
 
-  loadGoals: async () => {
+  // Goal dependencies management
+  updateDependencies: async (goalId, dependencyIds) => {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), {
+        dependencies: dependencyIds,
+        updatedAt: new Date()
+      });
+      
+      // Update dependent goals
+      for (const depId of dependencyIds) {
+        await updateDoc(doc(db, COLLECTIONS.GOALS, depId), {
+          dependents: arrayUnion(goalId)
+        });
+      }
+      
+      set((state) => ({
+        goals: state.goals.map(goal =>
+          goal.id === goalId ? { ...goal, dependencies: dependencyIds } : goal
+        )
+      }));
+      
+      toast.success('Dependencies updated!');
+    } catch (error) {
+      console.error('Error updating dependencies:', error);
+      toast.error('Failed to update dependencies');
+    }
+  },
+
+  // Link and unlink goals (edges in dependency graph)
+  linkGoals: async (goalId, dependsOnId) => {
+    const { goals } = get();
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
+    const nextDeps = Array.from(new Set([...(goal.dependencies || []), dependsOnId]));
+    await get().updateDependencies(goalId, nextDeps);
+  },
+
+  unlinkGoals: async (goalId, dependsOnId) => {
+    const { goals } = get();
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
+    const nextDeps = (goal.dependencies || []).filter(id => id !== dependsOnId);
+    await get().updateDependencies(goalId, nextDeps);
+  },
+
+  // Status and blocking helpers
+  setGoalStatus: async (goalId, status) => {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), {
+        status,
+        blocked: status === 'blocked',
+        updatedAt: new Date()
+      });
+      set((state) => ({
+        goals: state.goals.map(g => g.id === goalId ? { ...g, status, blocked: status === 'blocked' } : g)
+      }));
+      toast.success('Status updated');
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast.error('Failed to update status');
+    }
+  },
+
+  blockGoal: async (goalId, reason = '') => {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), {
+        status: 'blocked',
+        blocked: true,
+        blockedReason: reason,
+        updatedAt: new Date()
+      });
+      set((state) => ({
+        goals: state.goals.map(g => g.id === goalId ? { ...g, status: 'blocked', blocked: true, blockedReason: reason } : g)
+      }));
+      toast.success('Goal blocked');
+    } catch (error) {
+      console.error('Error blocking goal:', error);
+      toast.error('Failed to block goal');
+    }
+  },
+
+  unblockGoal: async (goalId) => {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), {
+        status: 'in_progress',
+        blocked: false,
+        blockedReason: '',
+        updatedAt: new Date()
+      });
+      set((state) => ({
+        goals: state.goals.map(g => g.id === goalId ? { ...g, status: 'in_progress', blocked: false, blockedReason: '' } : g)
+      }));
+      toast.success('Goal unblocked');
+    } catch (error) {
+      console.error('Error unblocking goal:', error);
+      toast.error('Failed to unblock goal');
+    }
+  },
+
+  // Roadmap data generator (for Gantt/timeline and graph views)
+  getRoadmapData: () => {
+    const { goals } = get();
+    const nodes = goals.map(g => ({
+      id: g.id,
+      title: g.title,
+      status: g.status || (g.completed ? 'completed' : 'not_started'),
+      progress: g.progress || 0,
+      startDate: g.startDate || g.createdAt,
+      endDate: g.endDate || g.deadline,
+      blocked: !!g.blocked
+    }));
+    const links = goals.flatMap(g => (g.dependencies || []).map(dep => ({ from: dep, to: g.id })));
+
+    // Simple timeline items for Gantt-like rendering
+    const timeline = nodes.map(n => {
+      const start = n.startDate?.toDate?.() || (n.startDate ? new Date(n.startDate) : new Date());
+      const end = n.endDate?.toDate?.() || (n.endDate ? new Date(n.endDate) : new Date(start.getTime() + (7 * 24 * 60 * 60 * 1000)));
+      const durationDays = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+      return { id: n.id, title: n.title, start, end, durationDays, progress: n.progress, status: n.status, blocked: n.blocked };
+    });
+
+    return { nodes, links, timeline };
+  },
+
+  // Check if goal can be started (all dependencies completed)
+  canStartGoal: (goalId) => {
+    const { goals } = get();
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal || !goal.dependencies?.length) return true;
+    
+    return goal.dependencies.every(depId => {
+      const depGoal = goals.find(g => g.id === depId);
+      return depGoal?.completed;
+    });
+  },
+
+  // Add tags to goal
+  addTagsToGoal: async (goalId, tags) => {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), {
+        tags: arrayUnion(...tags),
+        updatedAt: new Date()
+      });
+      
+      set((state) => ({
+        goals: state.goals.map(goal =>
+          goal.id === goalId 
+            ? { ...goal, tags: [...new Set([...(goal.tags || []), ...tags])] }
+            : goal
+        )
+      }));
+    } catch (error) {
+      console.error('Error adding tags:', error);
+    }
+  },
+
+  // Archive/unarchive goal
+  archiveGoal: async (goalId, archive = true) => {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), {
+        isArchived: archive,
+        archivedAt: archive ? new Date() : null,
+        updatedAt: new Date()
+      });
+      
+      set((state) => ({
+        goals: state.goals.map(goal =>
+          goal.id === goalId ? { ...goal, isArchived: archive } : goal
+        )
+      }));
+      
+      toast.success(`Goal ${archive ? 'archived' : 'unarchived'}!`);
+    } catch (error) {
+      console.error('Error archiving goal:', error);
+      toast.error('Failed to archive goal');
+    }
+  },
+
+  // Convert goal to habit
+  convertToHabit: async (goalId) => {
+    try {
+      const { goals } = get();
+      const goal = goals.find(g => g.id === goalId);
+      if (!goal) return;
+
+      const habit = {
+        title: goal.title,
+        description: goal.description,
+        category: goal.category,
+        frequency: 'daily',
+        targetValue: 1,
+        unit: 'completion',
+        color: '#8b5cf6',
+        icon: '🔄'
+      };
+      
+      await useHabitsStore.getState().addHabit(habit);
+      toast.success('Goal converted to habit!');
+    } catch (error) {
+      console.error('Error converting to habit:', error);
+      toast.error('Failed to convert to habit');
+    }
+  },
+
+  // Create goal from template
+  createFromTemplate: async (templateId) => {
+    try {
+      const template = useTemplatesStore.getState().templates.find(t => t.id === templateId);
+      if (!template) return;
+
+      // Create all goals from template
+      for (const goalData of template.goals) {
+        await get().addGoal({
+          ...goalData,
+          templateId: templateId,
+          createdFromTemplate: true
+        });
+      }
+      
+      // Create associated habits if any
+      for (const habitData of template.habits || []) {
+        await useHabitsStore.getState().addHabit(habitData);
+      }
+      
+      // Update template usage count
+      await updateDoc(doc(db, COLLECTIONS.TEMPLATES, templateId), {
+        usageCount: (template.usageCount || 0) + 1
+      });
+      
+      toast.success('Goals created from template!');
+    } catch (error) {
+      console.error('Error creating from template:', error);
+      toast.error('Failed to create from template');
+    }
+  },
+  
+    loadGoals: async () => {
     const { user } = useAppStore.getState();
     if (!user) return;
     set({ isLoading: true });
@@ -1123,108 +1446,521 @@ export const useTaskStore = create((set, get) => ({
   }
 }));
 
-// Notification management store with persistence
-export const useNotificationStore = create(
-  persist(
-    (set, get) => ({
-      notifications: [],
-      
-      // Initialize with sample notifications if none exist
-      initializeNotifications: () => {
-        const { notifications } = get();
-        if (notifications.length === 0) {
-          set({
-            notifications: [
-              {
-                id: 1,
-                type: 'achievement',
-                title: 'Welcome to Aurevo!',
-                message: 'Start your learning journey and unlock achievements as you progress.',
-                timestamp: new Date(Date.now() - 300000), // 5 minutes ago
-                read: false,
-                actionable: true,
-                action: 'Get Started'
-              },
-              {
-                id: 2,
-                type: 'system',
-                title: 'Tip: Set Your Study Goals',
-                message: 'Visit Settings to customize your daily study goals and preferences.',
-                timestamp: new Date(Date.now() - 600000), // 10 minutes ago
-                read: false,
-                actionable: true,
-                action: 'Open Settings'
-              }
-            ]
-          });
-        }
-      },
-
-  addNotification: (notification) => {
-    const newNotification = {
+// Enhanced notification store for advanced features
+export const useNotificationStore = create((set, get) => ({
+  notifications: [],
+  unreadCount: 0,
+  reminders: [],
+  isLoading: false,
+  
+  addNotification: (notification) => set((state) => ({
+    notifications: [{
       id: Date.now(),
       timestamp: new Date(),
       read: false,
+      type: 'info',
       ...notification
-    }
-    set(state => ({
-      notifications: [newNotification, ...state.notifications]
-    }))
-  },
-
-  markAsRead: (id) => {
-    set(state => ({
-      notifications: state.notifications.map(notification =>
-        notification.id === id ? { ...notification, read: true } : notification
-      )
-    }))
-  },
-
-  markAllAsRead: () => {
-    set(state => ({
-      notifications: state.notifications.map(notification => ({ ...notification, read: true }))
-    }))
-  },
-
-  deleteNotification: (id) => {
-    set(state => ({
-      notifications: state.notifications.filter(notification => notification.id !== id)
-    }))
-  },
-
-  clearAllNotifications: () => {
-    set({ notifications: [] })
-  },
-
+    }, ...state.notifications],
+    unreadCount: state.unreadCount + 1
+  })),
+  
+  markAsRead: (id) => set((state) => ({
+    notifications: state.notifications.map(n => 
+      n.id === id ? { ...n, read: true } : n
+    ),
+    unreadCount: Math.max(0, state.unreadCount - 1)
+  })),
+  
+  // Added: compute unread count on demand to support existing components
   getUnreadCount: () => {
-    const { notifications } = get()
-    return notifications.filter(n => !n.read).length
-  }
-}),
-{
-  name: 'notification-storage',
-  partialize: (state) => ({ 
-    notifications: (state.notifications || []).map(n => ({
-      ...n,
-      timestamp: n.timestamp instanceof Date ? n.timestamp.getTime() : n.timestamp
-    }))
+    const { notifications } = get();
+    return notifications.reduce((acc, n) => acc + (n.read ? 0 : 1), 0);
+  },
+
+  // Added: mark all notifications as read
+  markAllAsRead: () => set((state) => ({
+    notifications: state.notifications.map(n => ({ ...n, read: true })),
+    unreadCount: 0
+  })),
+
+  // Added: delete a notification and adjust unread count
+  deleteNotification: (id) => set((state) => {
+    const notif = state.notifications.find(n => n.id === id);
+    const nextList = state.notifications.filter(n => n.id !== id);
+    const nextUnread = notif && !notif.read ? Math.max(0, state.unreadCount - 1) : state.unreadCount;
+    return { notifications: nextList, unreadCount: nextUnread };
   }),
-  onRehydrateStorage: () => {
-    return (state, error) => {
-      if (error) {
-        // Silent fail on notification rehydration error
-        return;
-      }
-      if (state?.notifications) {
-        state.notifications = state.notifications.map(n => ({
-          ...n,
-          timestamp: new Date(n.timestamp)
-        }));
-      }
-    };
+
+  // Added: clear all notifications
+  clearAllNotifications: () => set(() => ({
+    notifications: [],
+    unreadCount: 0
+  })),
+
+  // Smart reminders system
+  createReminder: async (reminderData) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const reminder = {
+        userId: user.uid,
+        goalId: reminderData.goalId,
+        title: reminderData.title,
+        message: reminderData.message,
+        reminderType: reminderData.type || 'deadline',
+        scheduledFor: reminderData.scheduledFor,
+        priority: reminderData.priority || 'normal',
+        quietHours: reminderData.quietHours || { start: '22:00', end: '07:00' },
+        frequency: reminderData.frequency || 'once',
+        isActive: true,
+        createdAt: new Date()
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.REMINDERS), reminder);
+      set((state) => ({
+        reminders: [{ id: docRef.id, ...reminder }, ...state.reminders]
+      }));
+      
+      toast.success('Reminder created!');
+    } catch (error) {
+      console.error('Error creating reminder:', error);
+      toast.error('Failed to create reminder');
+    }
+  },
+
+  // Snooze a reminder notification by N minutes (local-only stub)
+  snoozeNotification: (id, minutes = 30) => set((state) => ({
+    notifications: state.notifications.map(n => 
+      n.id === id ? { ...n, snoozedUntil: new Date(Date.now() + minutes * 60000) } : n
+    )
+  })),
+
+  // Update quiet hours for future reminders
+  setQuietHours: (start = '22:00', end = '07:00') => set((state) => ({
+    reminders: state.reminders.map(r => ({ ...r, quietHours: { start, end } }))
+  })),
+  
+  initializeNotifications: () => {
+    // Initialize notification system
+    set({ notifications: [], unreadCount: 0 });
   }
-}
-));
+}));
+
+// Habits tracking store
+export const useHabitsStore = create((set, get) => ({
+  habits: [],
+  habitLogs: [],
+  streaks: {},
+  isLoading: false,
+  
+  addHabit: async (habitData) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const habit = {
+        userId: user.uid,
+        title: habitData.title,
+        description: habitData.description || '',
+        frequency: habitData.frequency || 'daily',
+        category: habitData.category || 'general',
+        targetValue: habitData.targetValue || 1,
+        unit: habitData.unit || 'times',
+        color: habitData.color || '#8b5cf6',
+        icon: habitData.icon || '✅',
+        // Recurring schedule fields
+        schedule: habitData.schedule || { type: 'daily', daysOfWeek: [1,2,3,4,5,6,0], timeOfDay: '09:00' },
+        quietHours: habitData.quietHours || { start: '22:00', end: '07:00' },
+        nudgePolicy: habitData.nudgePolicy || { priority: 'normal', snoozeMinutes: 30 },
+        isActive: true,
+        createdAt: new Date(),
+        streak: 0,
+        longestStreak: 0,
+        totalCompletions: 0
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.HABITS), habit);
+      set((state) => ({ habits: [{ id: docRef.id, ...habit }, ...state.habits] }));
+      
+      useAppStore.getState().addXP(20);
+      toast.success('Habit created! +20 XP');
+    } catch (error) {
+      console.error('Error adding habit:', error);
+      toast.error('Failed to create habit');
+    }
+  },
+  
+  logHabit: async (habitId, value = 1) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const today = new Date().toDateString();
+      const habitLog = {
+        userId: user.uid,
+        habitId,
+        value,
+        date: today,
+        timestamp: new Date()
+      };
+      
+      await addDoc(collection(db, COLLECTIONS.STREAK_DATA), habitLog);
+      
+      // Update habit streak
+      const { habits } = get();
+      const habit = habits.find(h => h.id === habitId);
+      if (habit) {
+        const newStreak = habit.streak + 1;
+        const newLongestStreak = Math.max(habit.longestStreak || 0, newStreak);
+        
+        await updateDoc(doc(db, COLLECTIONS.HABITS, habitId), {
+          streak: newStreak,
+          longestStreak: newLongestStreak,
+          totalCompletions: (habit.totalCompletions || 0) + 1,
+          lastCompletedAt: new Date()
+        });
+        
+        set((state) => ({
+          habits: state.habits.map(h => 
+            h.id === habitId 
+              ? { ...h, streak: newStreak, longestStreak: newLongestStreak, totalCompletions: (h.totalCompletions || 0) + 1 }
+              : h
+          ),
+          habitLogs: [habitLog, ...state.habitLogs]
+        }));
+        
+        const xpReward = newStreak >= 7 ? 50 : newStreak >= 3 ? 25 : 10;
+        useAppStore.getState().addXP(xpReward);
+        toast.success(`Habit logged! ${newStreak} day streak! +${xpReward} XP`);
+      }
+    } catch (error) {
+      console.error('Error logging habit:', error);
+      toast.error('Failed to log habit');
+    }
+  },
+
+  // Generate heatmap-ready data for past N days
+  getHabitHeatmap: (habitId, days = 180) => {
+    const { habitLogs } = get();
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+    const byDate = new Map();
+    for (const log of habitLogs.filter(l => l.habitId === habitId)) {
+      const d = new Date(log.timestamp?.toDate?.() || log.timestamp);
+      if (d >= start && d <= end) {
+        const key = d.toISOString().slice(0,10);
+        byDate.set(key, (byDate.get(key) || 0) + (log.value || 1));
+      }
+    }
+    const results = [];
+    for (let i = 0; i <= days; i++) {
+      const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0,10);
+      results.push({ date: key, count: byDate.get(key) || 0 });
+    }
+    return results;
+  },
+
+  // Determine next due date based on schedule
+  getNextHabitOccurrence: (habitId, fromDate = new Date()) => {
+    const { habits } = get();
+    const habit = habits.find(h => h.id === habitId);
+    if (!habit) return null;
+    const schedule = habit.schedule || { type: 'daily', daysOfWeek: [1,2,3,4,5,6,0], timeOfDay: '09:00' };
+    const [hour, minute] = (schedule.timeOfDay || '09:00').split(':').map(Number);
+    const start = new Date(fromDate);
+
+    const isAllowedDay = (d) => schedule.daysOfWeek.includes(d.getDay());
+    let candidate = new Date(start);
+    candidate.setHours(hour, minute, 0, 0);
+    if (candidate <= start || !isAllowedDay(candidate)) {
+      // advance to next allowed day
+      for (let i = 1; i <= 14; i++) {
+        const next = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+        next.setHours(hour, minute, 0, 0);
+        if (isAllowedDay(next)) { candidate = next; break; }
+      }
+    }
+    return candidate;
+  },
+
+  loadHabits: async () => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    set({ isLoading: true });
+    try {
+      const habitsQuery = query(
+        collection(db, COLLECTIONS.HABITS),
+        where('userId', '==', user.uid),
+        where('isActive', '==', true)
+      );
+      
+      const snapshot = await getDocs(habitsQuery);
+      const habits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      set({ habits });
+    } catch (error) {
+      console.error('Error loading habits:', error);
+    } finally {
+      set({ isLoading: false });
+    }
+  }
+}));
+
+// Focus sessions and Pomodoro store
+export const useFocusStore = create((set, get) => ({
+  focusSessions: [],
+  currentSession: null,
+  isActive: false,
+  timeRemaining: 0,
+  sessionType: 'focus', // focus, break, longBreak
+  settings: {
+    focusDuration: 25,
+    shortBreakDuration: 5,
+    longBreakDuration: 15,
+    sessionsUntilLongBreak: 4
+  },
+  _timerId: null,
+  
+  _startTicker: () => {
+    // Clear any existing ticker
+    const state = get();
+    if (state._timerId) {
+      clearInterval(state._timerId);
+    }
+    const id = setInterval(() => {
+      const { timeRemaining, isActive } = get();
+      if (!isActive) return;
+      if (timeRemaining <= 1) {
+        clearInterval(get()._timerId);
+        set({ _timerId: null });
+        get().completeFocusSession();
+      } else {
+        set({ timeRemaining: timeRemaining - 1 });
+      }
+    }, 1000);
+    set({ _timerId: id });
+  },
+  
+  startFocusSession: async (goalId, duration = 25) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    const session = {
+      id: Date.now(),
+      userId: user.uid,
+      goalId,
+      duration: duration * 60, // Convert to seconds
+      startTime: new Date(),
+      status: 'active'
+    };
+    
+    set({ 
+      currentSession: session,
+      isActive: true,
+      timeRemaining: duration * 60,
+      sessionType: 'focus'
+    });
+    get()._startTicker();
+  },
+  
+  pauseSession: () => {
+    const { _timerId, isActive } = get();
+    if (_timerId) clearInterval(_timerId);
+    set({ _timerId: null, isActive: false });
+  },
+  
+  resumeSession: () => {
+    const { currentSession, timeRemaining } = get();
+    if (!currentSession || timeRemaining <= 0) return;
+    set({ isActive: true });
+    get()._startTicker();
+  },
+  
+  stopSession: () => {
+    const { _timerId } = get();
+    if (_timerId) clearInterval(_timerId);
+    set({ _timerId: null, currentSession: null, isActive: false, timeRemaining: 0 });
+  },
+  
+  completeFocusSession: async () => {
+    const { currentSession } = get();
+    const { user } = useAppStore.getState();
+    if (!currentSession || !user) return;
+    
+    try {
+      const sessionData = {
+        userId: user.uid,
+        goalId: currentSession.goalId,
+        duration: Math.floor((currentSession.duration - get().timeRemaining) / 60),
+        startTime: currentSession.startTime,
+        endTime: new Date(),
+        type: 'focus',
+        completed: true
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.FOCUS_SESSIONS), sessionData);
+      
+      // Update goal progress if linked
+      if (currentSession.goalId) {
+        const goals = useTaskStore.getState().goals;
+        const goal = goals.find(g => g.id === currentSession.goalId);
+        if (goal && goal.progress < 100) {
+          const progressIncrease = Math.min(5, 100 - goal.progress);
+          useTaskStore.getState().updateGoalProgress(currentSession.goalId, goal.progress + progressIncrease);
+        }
+      }
+      
+      set((state) => ({
+        focusSessions: [{ id: docRef.id, ...sessionData }, ...state.focusSessions],
+        currentSession: null,
+        isActive: false,
+        timeRemaining: 0,
+        _timerId: state._timerId && (clearInterval(state._timerId), null)
+      }));
+      
+      const xpReward = Math.floor(sessionData.duration / 5) * 5;
+      useAppStore.getState().addXP(xpReward);
+      toast.success(`Focus session complete! +${xpReward} XP`);
+    } catch (error) {
+      console.error('Error completing focus session:', error);
+    }
+  }
+}));
+
+// Templates marketplace store
+export const useTemplatesStore = create((set, get) => ({
+  templates: [],
+  userTemplates: [],
+  categories: ['productivity', 'health', 'learning', 'career', 'personal'],
+  isLoading: false,
+  
+  createTemplate: async (templateData) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const template = {
+        userId: user.uid,
+        title: templateData.title,
+        description: templateData.description,
+        category: templateData.category,
+        goals: templateData.goals || [],
+        habits: templateData.habits || [],
+        isPublic: templateData.isPublic || false,
+        tags: templateData.tags || [],
+        createdAt: new Date(),
+        usageCount: 0,
+        rating: 0,
+        reviews: []
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.TEMPLATES), template);
+      set((state) => ({
+        userTemplates: [{ id: docRef.id, ...template }, ...state.userTemplates]
+      }));
+      
+      toast.success('Template created successfully!');
+    } catch (error) {
+      console.error('Error creating template:', error);
+      toast.error('Failed to create template');
+    }
+  },
+  
+  loadPublicTemplates: async () => {
+    try {
+      const templatesQuery = query(
+        collection(db, COLLECTIONS.TEMPLATES),
+        where('isPublic', '==', true)
+      );
+      
+      const snapshot = await getDocs(templatesQuery);
+      const templates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      set({ templates });
+    } catch (error) {
+      console.error('Error loading templates:', error);
+    }
+  }
+}));
+
+// OKRs (Objectives and Key Results) store
+export const useOKRsStore = create((set, get) => ({
+  objectives: [],
+  keyResults: [],
+  quarters: [],
+  isLoading: false,
+  
+  createObjective: async (objectiveData) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const objective = {
+        userId: user.uid,
+        title: objectiveData.title,
+        description: objectiveData.description,
+        quarter: objectiveData.quarter,
+        year: objectiveData.year || new Date().getFullYear(),
+        progress: 0,
+        keyResultIds: [],
+        createdAt: new Date(),
+        isActive: true
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.OKRS), objective);
+      set((state) => ({
+        objectives: [{ id: docRef.id, ...objective }, ...state.objectives]
+      }));
+      
+      useAppStore.getState().addXP(30);
+      toast.success('Objective created! +30 XP');
+    } catch (error) {
+      console.error('Error creating objective:', error);
+      toast.error('Failed to create objective');
+    }
+  },
+  
+  addKeyResult: async (objectiveId, keyResultData) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const keyResult = {
+        userId: user.uid,
+        objectiveId,
+        title: keyResultData.title,
+        description: keyResultData.description,
+        targetValue: keyResultData.targetValue,
+        currentValue: keyResultData.currentValue || 0,
+        unit: keyResultData.unit || 'points',
+        progress: 0,
+        createdAt: new Date()
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.OKRS), keyResult);
+      
+      // Update objective with new key result
+      await updateDoc(doc(db, COLLECTIONS.OKRS, objectiveId), {
+        keyResultIds: arrayUnion(docRef.id)
+      });
+      
+      set((state) => ({
+        keyResults: [{ id: docRef.id, ...keyResult }, ...state.keyResults],
+        objectives: state.objectives.map(obj => 
+          obj.id === objectiveId 
+            ? { ...obj, keyResultIds: [...(obj.keyResultIds || []), docRef.id] }
+            : obj
+        )
+      }));
+      
+      toast.success('Key Result added!');
+    } catch (error) {
+      console.error('Error adding key result:', error);
+      toast.error('Failed to add key result');
+    }
+  }
+}));
 
 // Auto-sync store data to Firebase (commented out - causing issues)
 // TODO: Implement proper subscription when needed
@@ -1291,4 +2027,505 @@ export const useNotificationStore = create(
 //       toast.success(`🏆 ${achievements.join(', ')} achieved! +${bonusXP} XP`);
 //     }
 //   }
-// }; 
+// };
+
+// Calendar integration store
+export const useCalendarStore = create((set, get) => ({
+  events: [],
+  integrations: {
+    google: false,
+    outlook: false
+  },
+  
+  syncWithCalendar: async (provider = 'google') => {
+    // Calendar sync implementation would go here
+    toast.success(`Calendar sync with ${provider} started`);
+  },
+  
+  createCalendarEvent: async (goalId, eventData) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const event = {
+        userId: user.uid,
+        goalId,
+        title: eventData.title,
+        description: eventData.description,
+        startTime: eventData.startTime,
+        endTime: eventData.endTime,
+        isAllDay: eventData.isAllDay || false,
+        recurrence: eventData.recurrence || null,
+        createdAt: new Date()
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.CALENDAR_EVENTS), event);
+      set((state) => ({
+        events: [{ id: docRef.id, ...event }, ...state.events]
+      }));
+      
+      toast.success('Calendar event created!');
+    } catch (error) {
+      console.error('Error creating calendar event:', error);
+      toast.error('Failed to create event');
+    }
+  }
+}));
+
+// Collaboration store
+export const useCollaborationStore = create((set, get) => ({
+  comments: [],
+  sharedGoals: [],
+  collaborators: [],
+  
+  addComment: async (goalId, comment) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const commentData = {
+        userId: user.uid,
+        goalId,
+        content: comment,
+        timestamp: new Date(),
+        mentions: comment.match(/@(\w+)/g) || []
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.GOAL_COMMENTS), commentData);
+      set((state) => ({
+        comments: [{ id: docRef.id, ...commentData }, ...state.comments]
+      }));
+      
+      toast.success('Comment added!');
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      toast.error('Failed to add comment');
+    }
+  },
+  
+  shareGoal: async (goalId, collaboratorEmail, permissions = 'view') => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const shareData = {
+        goalId,
+        ownerId: user.uid,
+        collaboratorEmail,
+        permissions, // view, edit, admin
+        sharedAt: new Date(),
+        isActive: true
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.SHARED_GOALS), shareData);
+      set((state) => ({
+        sharedGoals: [{ id: docRef.id, ...shareData }, ...state.sharedGoals]
+      }));
+      
+      toast.success(`Goal shared with ${collaboratorEmail}!`);
+    } catch (error) {
+      console.error('Error sharing goal:', error);
+      toast.error('Failed to share goal');
+    }
+  }
+}));
+
+// Attachments store
+export const useAttachmentsStore = create((set, get) => ({
+  attachments: [],
+  uploadProgress: {},
+  
+  uploadAttachment: async (goalId, file) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      // Simulate file upload (would integrate with Firebase Storage)
+      const attachment = {
+        userId: user.uid,
+        goalId,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+        uploadedAt: new Date(),
+        url: URL.createObjectURL(file) // Temporary URL
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.GOAL_ATTACHMENTS), attachment);
+      set((state) => ({
+        attachments: [{ id: docRef.id, ...attachment }, ...state.attachments]
+      }));
+      
+      toast.success('File attached successfully!');
+    } catch (error) {
+      console.error('Error uploading attachment:', error);
+      toast.error('Failed to upload file');
+    }
+  }
+}));
+
+// Enhanced achievements store
+export const useAchievementsStore = create((set, get) => ({
+  achievements: [],
+  badges: [],
+  seasonalEvents: [],
+  quests: [],
+  
+  unlockAchievement: async (achievementId, data) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const achievement = {
+        userId: user.uid,
+        achievementId,
+        title: data.title,
+        description: data.description,
+        icon: data.icon,
+        rarity: data.rarity || 'common',
+        xpReward: data.xpReward || 0,
+        shinePointsReward: data.shinePointsReward || 0,
+        unlockedAt: new Date()
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.ACHIEVEMENTS), achievement);
+      set((state) => ({
+        achievements: [{ id: docRef.id, ...achievement }, ...state.achievements]
+      }));
+      
+      if (achievement.xpReward) useAppStore.getState().addXP(achievement.xpReward);
+      if (achievement.shinePointsReward) useAppStore.getState().addShinePoints(achievement.shinePointsReward);
+      
+      toast.success(`🏆 Achievement unlocked: ${achievement.title}!`);
+    } catch (error) {
+      console.error('Error unlocking achievement:', error);
+    }
+  }
+}));
+
+// Finance goals store
+export const useFinanceStore = create((set, get) => ({
+  financeGoals: [],
+  transactions: [],
+  budgets: [],
+  
+  createFinanceGoal: async (goalData) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const financeGoal = {
+        userId: user.uid,
+        title: goalData.title,
+        targetAmount: goalData.targetAmount,
+        currentAmount: goalData.currentAmount || 0,
+        currency: goalData.currency || 'USD',
+        deadline: goalData.deadline,
+        category: goalData.category, // saving, investment, debt, budget
+        createdAt: new Date()
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.GOALS), {
+        ...financeGoal,
+        type: 'finance',
+        progress: goalData.currentAmount > 0 ? (goalData.currentAmount / goalData.targetAmount) * 100 : 0
+      });
+      
+      set((state) => ({
+        financeGoals: [{ id: docRef.id, ...financeGoal }, ...state.financeGoals]
+      }));
+      
+      useAppStore.getState().addXP(25);
+      toast.success('Finance goal created! +25 XP');
+    } catch (error) {
+      console.error('Error creating finance goal:', error);
+      toast.error('Failed to create finance goal');
+    }
+  },
+  
+  updateFinanceProgress: async (goalId, amount) => {
+    try {
+      const { financeGoals } = get();
+      const goal = financeGoals.find(g => g.id === goalId);
+      if (!goal) return;
+      
+      const newAmount = goal.currentAmount + amount;
+      const progress = Math.min(100, (newAmount / goal.targetAmount) * 100);
+      
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), {
+        currentAmount: newAmount,
+        progress,
+        updatedAt: new Date()
+      });
+      
+      set((state) => ({
+        financeGoals: state.financeGoals.map(g =>
+          g.id === goalId ? { ...g, currentAmount: newAmount, progress } : g
+        )
+      }));
+      
+      if (progress === 100) {
+        useAppStore.getState().addXP(100);
+        useAppStore.getState().addShinePoints(50);
+        toast.success('🎉 Finance goal completed! +100 XP, +50 Shine Points');
+      } else {
+        toast.success('Progress updated!');
+      }
+    } catch (error) {
+      console.error('Error updating finance progress:', error);
+      toast.error('Failed to update progress');
+    }
+  }
+}));
+
+// Automation store
+export const useAutomationStore = create((set, get) => ({
+  rules: [],
+  webhooks: [],
+  
+  createAutomationRule: async (ruleData) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    
+    try {
+      const rule = {
+        userId: user.uid,
+        name: ruleData.name,
+        trigger: ruleData.trigger, // goal_completed, progress_milestone, deadline_approaching
+        conditions: ruleData.conditions || [],
+        actions: ruleData.actions || [], // send_notification, add_xp, create_task
+        isActive: true,
+        createdAt: new Date()
+      };
+      
+      const docRef = await addDoc(collection(db, COLLECTIONS.AUTOMATION_RULES), rule);
+      set((state) => ({
+        rules: [{ id: docRef.id, ...rule }, ...state.rules]
+      }));
+      
+      toast.success('Automation rule created!');
+    } catch (error) {
+      console.error('Error creating automation rule:', error);
+      toast.error('Failed to create automation rule');
+    }
+  }
+}));
+
+export const useSocialStore = create((set, get) => ({
+  posts: [],
+  comments: [],
+  isLoading: false,
+  pageSize: 10,
+  lastDoc: null,
+  hasMore: true,
+  bookmarks: JSON.parse(localStorage.getItem('aurevo_post_bookmarks') || '[]'),
+
+  saveBookmarks: (list) => {
+    try { localStorage.setItem('aurevo_post_bookmarks', JSON.stringify(list)); } catch (e) {}
+  },
+
+  uploadMedia: async (file) => {
+    const { user } = useAppStore.getState();
+    if (!user || !file) return null;
+    const path = `posts/${user.uid}/${Date.now()}_${file.name}`;
+    const r = storageRef(storage, path);
+    await uploadBytes(r, file);
+    return await getDownloadURL(r);
+  },
+
+  createPost: async ({ content, mediaUrls = [], tags = [] }) => {
+    const { user } = useAppStore.getState();
+    if (!user || !content?.trim()) return;
+    try {
+      const post = {
+        userId: user.uid,
+        displayName: user.displayName || user.email?.split('@')[0] || 'User',
+        avatar: user.photoURL || '',
+        content: content.trim(),
+        mediaUrls,
+        tags,
+        likes: [],
+        pinned: false,
+        createdAt: serverTimestamp(),
+        timestamp: serverTimestamp()
+      };
+      const docRef = await addDoc(collection(db, COLLECTIONS.POSTS), post);
+      set((state) => ({ posts: [{ id: docRef.id, ...post }, ...state.posts ] }));
+    } catch (e) {
+      console.error('Error creating post:', e);
+      toast.error('Failed to post');
+    }
+  },
+
+  editPost: async (postId, updates) => {
+    const p = get().posts.find(x => x.id === postId);
+    if (!p) return;
+    try {
+      await updateDoc(doc(db, COLLECTIONS.POSTS, postId), {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+      set((s) => ({ posts: s.posts.map(x => x.id === postId ? { ...x, ...updates } : x) }));
+    } catch (e) { console.error('Error editing post:', e); }
+  },
+
+  togglePin: async (postId) => {
+    const p = get().posts.find(x => x.id === postId);
+    if (!p) return;
+    try {
+      await updateDoc(doc(db, COLLECTIONS.POSTS, postId), { pinned: !p.pinned });
+      set((s) => ({ posts: s.posts.map(x => x.id === postId ? { ...x, pinned: !p.pinned } : x) }));
+    } catch (e) { console.error('Error pinning post:', e); }
+  },
+
+  deletePost: async (postId) => {
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.POSTS, postId));
+      set((s) => ({ posts: s.posts.filter(x => x.id !== postId) }));
+    } catch (e) { console.error('Error deleting post:', e); }
+  },
+
+  toggleLike: async (postId) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    const state = get();
+    const post = state.posts.find(p => p.id === postId);
+    if (!post) return;
+    const hasLiked = (post.likes || []).includes(user.uid);
+    try {
+      const newLikes = hasLiked 
+        ? (post.likes || []).filter(id => id !== user.uid)
+        : [ ...(post.likes || []), user.uid ];
+      await updateDoc(doc(db, COLLECTIONS.POSTS, postId), { likes: newLikes });
+      set((s) => ({ posts: s.posts.map(p => p.id === postId ? { ...p, likes: newLikes } : p) }));
+    } catch (e) {
+      console.error('Error toggling like:', e);
+    }
+  },
+
+  toggleBookmark: (postId) => {
+    const list = new Set(get().bookmarks);
+    if (list.has(postId)) list.delete(postId); else list.add(postId);
+    const next = Array.from(list);
+    set({ bookmarks: next });
+    get().saveBookmarks(next);
+  },
+
+  addCommentToPost: async (postId, content, parentId = null) => {
+    const { user } = useAppStore.getState();
+    if (!user || !content?.trim()) return;
+    const post = get().posts.find(p => p.id === postId);
+    const postOwnerId = post?.userId || null;
+    try {
+      const comment = {
+        postId,
+        postOwnerId,
+        userId: user.uid,
+        displayName: user.displayName || user.email?.split('@')[0] || 'User',
+        avatar: user.photoURL || '',
+        content: content.trim(),
+        reactions: [],
+        parentId,
+        createdAt: serverTimestamp(),
+        timestamp: serverTimestamp()
+      };
+      const docRef = await addDoc(collection(db, COLLECTIONS.POST_COMMENTS), comment);
+      set((state) => ({ comments: [{ id: docRef.id, ...comment }, ...state.comments] }));
+    } catch (e) {
+      console.error('Error adding comment:', e);
+    }
+  },
+
+  toggleCommentReaction: async (commentId, reactionType) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    const c = get().comments.find(x => x.id === commentId);
+    if (!c) return;
+    const key = `${reactionType}:${user.uid}`;
+    const existing = c.reactions || [];
+    const has = existing.includes(key);
+    try {
+      const next = has ? existing.filter(x => x !== key) : [ ...existing, key ];
+      await updateDoc(doc(db, COLLECTIONS.POST_COMMENTS, commentId), { reactions: next });
+      set((s) => ({ comments: s.comments.map(x => x.id === commentId ? { ...x, reactions: next } : x) }));
+    } catch (e) { console.error('Error reacting to comment:', e); }
+  },
+
+  editComment: async (commentId, content) => {
+    try {
+      await updateDoc(doc(db, COLLECTIONS.POST_COMMENTS, commentId), { content, updatedAt: serverTimestamp() });
+      set((s) => ({ comments: s.comments.map(x => x.id === commentId ? { ...x, content } : x) }));
+    } catch (e) { console.error('Error editing comment:', e); }
+  },
+
+  deleteComment: async (commentId) => {
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.POST_COMMENTS, commentId));
+      set((s) => ({ comments: s.comments.filter(x => x.id !== commentId) }));
+    } catch (e) { console.error('Error deleting comment:', e); }
+  },
+
+  // Helpers
+  getTrendingTags: (limitCount = 10) => {
+    const counts = new Map();
+    get().posts.forEach(p => (p.tags||[]).forEach(t => counts.set(t, (counts.get(t)||0)+1)));
+    return Array.from(counts.entries()).sort((a,b)=>b[1]-a[1]).slice(0, limitCount).map(([tag,count])=>({tag,count}));
+  },
+
+  filterAndSortPosts: ({ mine = false, liked = false, mediaOnly = false, search = '', sort = 'new' } = {}) => {
+    const { posts } = get();
+    const uid = useAppStore.getState().user?.uid;
+    let list = [...posts];
+    if (mine && uid) list = list.filter(p => p.userId === uid);
+    if (liked && uid) list = list.filter(p => (p.likes||[]).includes(uid));
+    if (mediaOnly) list = list.filter(p => (p.mediaUrls||[]).length > 0);
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(p => (p.content||'').toLowerCase().includes(q) || (p.tags||[]).some(t => t.toLowerCase().includes(q)));
+    }
+    if (sort === 'top') list.sort((a,b)=> (b.likes?.length||0) - (a.likes?.length||0));
+    else if (sort === 'pinned') list.sort((a,b)=> (b.pinned===true)-(a.pinned===true));
+    else list.sort((a,b)=> (b.createdAt?.toDate?.()||new Date(b.createdAt)) - (a.createdAt?.toDate?.()||new Date(a.createdAt)));
+    return list;
+  },
+
+  loadFeed: async (reset = false) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    if (reset) set({ posts: [], lastDoc: null, hasMore: true });
+    set({ isLoading: true });
+    try {
+      const baseQuery = query(
+        collection(db, COLLECTIONS.POSTS),
+        orderBy('createdAt', 'desc'),
+        limit(get().pageSize)
+      );
+      const q = get().lastDoc ? query(baseQuery, startAfter(get().lastDoc)) : baseQuery;
+      const snap = await getDocs(q);
+      const newPosts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const lastDoc = snap.docs[snap.docs.length - 1] || null;
+      // Load comments
+      let newComments = [];
+      try {
+        const commentsSnap = await getDocs(query(collection(db, COLLECTIONS.POST_COMMENTS)));
+        newComments = commentsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (e) {}
+      set((state) => ({
+        posts: reset ? newPosts : [...state.posts, ...newPosts],
+        comments: reset ? newComments : state.comments,
+        lastDoc,
+        hasMore: !!lastDoc
+      }));
+    } catch (e) {
+      console.error('Error loading feed:', e);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  loadMore: async () => {
+    const { hasMore, isLoading } = get();
+    if (!hasMore || isLoading) return;
+    await get().loadFeed(false);
+  }
+})); 

@@ -83,6 +83,24 @@ export default function Study() {
             </motion.p>
           </motion.div>
 
+          {/* Contextual Sub-navigation */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: 'Focus Sessions', path: '/focus' },
+              { label: 'Calendar', path: '/calendar' }
+            ].map(item => (
+              <button
+                key={item.label}
+                onClick={() => window.location.assign(item.path)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                  darkMode ? 'bg-gray-800/50 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
           {/* Manual Study Logger */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}

@@ -24,7 +24,8 @@ const NAVIGATION_ITEMS = [
   { id: 'wellness', path: '/wellness', icon: Activity, labelKey: 'wellness', color: 'text-green-500' },
   { id: 'study', path: '/study', icon: BookOpen, labelKey: 'study', color: 'text-purple-500' },
   { id: 'goals', path: '/goals', icon: Target, labelKey: 'goals', color: 'text-orange-500' },
-  { id: 'reports', path: '/reports', icon: BarChart3, labelKey: 'reports', color: 'text-indigo-500' }
+  { id: 'reports', path: '/reports', icon: BarChart3, labelKey: 'reports', color: 'text-indigo-500' },
+  { id: 'social', path: '/social', icon: User, labelKey: 'Social', color: 'text-pink-500' }
 ]
 
 export default function Sidebar() {

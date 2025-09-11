@@ -75,7 +75,25 @@ export const COLLECTIONS = {
   FLASHCARDS: 'flashcards',
   STREAK_DATA: 'streakData',
   NOTIFICATIONS: 'notifications',
-  USER_PROGRESS: 'userProgress'
+  USER_PROGRESS: 'userProgress',
+  // New collections for advanced features
+  HABITS: 'habits',
+  GOAL_DEPENDENCIES: 'goalDependencies',
+  GOAL_COMMENTS: 'goalComments',
+  GOAL_ATTACHMENTS: 'goalAttachments',
+  FOCUS_SESSIONS: 'focusSessions',
+  ACHIEVEMENTS: 'achievements',
+  TEMPLATES: 'templates',
+  OKRS: 'okrs',
+  CALENDAR_EVENTS: 'calendarEvents',
+  REMINDERS: 'reminders',
+  SHARED_GOALS: 'sharedGoals',
+  GOAL_VERSIONS: 'goalVersions',
+  CUSTOM_FIELDS: 'customFields',
+  AUTOMATION_RULES: 'automationRules',
+  // Social
+  POSTS: 'posts',
+  POST_COMMENTS: 'postComments'
 };
 
 // Utility functions for Firestore paths

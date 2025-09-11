@@ -10,11 +10,26 @@ import Wellness from './routes/Wellness'
 import Study from './routes/Study'
 import Goals from './routes/Goals'
 import Reports from './routes/Reports'
+import Roadmap from './routes/Roadmap'
+import Calendar from './routes/Calendar'
+import Kanban from './routes/Kanban'
+import Collaboration from './routes/Collaboration'
+import Focus from './routes/Focus'
+import Achievements from './routes/Achievements'
+import Finance from './routes/Finance'
+import Social from './routes/Social'
 import Profile from './routes/Profile'
 import Settings from './routes/Settings'
 import PrivacyPolicy from './routes/PrivacyPolicy'
 import TermsOfService from './routes/TermsOfService'
 import LandingPage from './routes/LandingPage'
+import Insights from './routes/Insights'
+import OKRs from './routes/OKRs'
+import Templates from './routes/Templates'
+import Attachments from './routes/Attachments'
+import Views from './routes/Views'
+import Export from './routes/Export'
+import PublicGoal from './routes/PublicGoal'
 import { useAuth } from './hooks_useAuth'
 import { useAppStore, useNotificationStore, useMoodStore, useWellnessStore, useTaskStore } from './store'
 import { useEffect } from 'react'
@@ -74,8 +89,23 @@ export default function App() {
           <Route path="/study" element={user ? <Study /> : <Navigate to="/login" />} />
           <Route path="/goals" element={user ? <Goals /> : <Navigate to="/login" />} />
           <Route path="/reports" element={user ? <Reports /> : <Navigate to="/login" />} />
+          <Route path="/roadmap" element={user ? <Roadmap /> : <Navigate to="/login" />} />
+          <Route path="/calendar" element={user ? <Calendar /> : <Navigate to="/login" />} />
+          <Route path="/kanban" element={user ? <Kanban /> : <Navigate to="/login" />} />
+          <Route path="/collaboration" element={user ? <Collaboration /> : <Navigate to="/login" />} />
+          <Route path="/focus" element={user ? <Focus /> : <Navigate to="/login" />} />
+          <Route path="/achievements" element={user ? <Achievements /> : <Navigate to="/login" />} />
+          <Route path="/finance" element={user ? <Finance /> : <Navigate to="/login" />} />
+          <Route path="/social" element={user ? <Social /> : <Navigate to="/login" />} />
           <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
           <Route path="/settings" element={user ? <Settings /> : <Navigate to="/login" />} />
+          <Route path="/insights" element={user ? <Insights /> : <Navigate to="/login" />} />
+          <Route path="/okrs" element={user ? <OKRs /> : <Navigate to="/login" />} />
+          <Route path="/templates" element={user ? <Templates /> : <Navigate to="/login" />} />
+          <Route path="/attachments" element={user ? <Attachments /> : <Navigate to="/login" />} />
+          <Route path="/views" element={user ? <Views /> : <Navigate to="/login" />} />
+          <Route path="/export" element={user ? <Export /> : <Navigate to="/login" />} />
+          <Route path="/g/:id" element={<PublicGoal />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="*" element={<Navigate to="/" />} />
