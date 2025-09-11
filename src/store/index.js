@@ -852,11 +852,36 @@ export const useTaskStore = create((set, get) => ({
         createdAt: new Date(),
         updatedAt: new Date(),
         completed: false,
-        completedAt: null
+        completedAt: null,
+        subGoals: goalData.subGoals?.filter(sg => sg.trim()) || [],
+        timeEstimate: goalData.timeEstimate || 30,
+        streak: 0,
+        lastProgressUpdate: new Date(),
+        milestones: [],
+        tags: goalData.tags || []
       };
       const docRef = await addDoc(collection(db, COLLECTIONS.GOALS), newGoal);
       set((state) => ({ goals: [{ id: docRef.id, ...newGoal }, ...state.goals] }));
-      toast.success('Goal added successfully!');
+      
+      // Award XP for creating goal
+      const xpReward = 15;
+      useAppStore.getState().addXP(xpReward);
+      toast.success(`Goal created successfully! +${xpReward} XP`);
+      
+      // Check for achievement (first goal, 5 goals, 10 goals)
+      const { goals } = get();
+      const totalGoals = goals.length;
+      if (totalGoals === 1) {
+        useAppStore.getState().addShinePoints(50);
+        toast.success('🎉 First Goal Achievement! +50 Shine Points');
+      } else if (totalGoals === 5) {
+        useAppStore.getState().addShinePoints(100);
+        toast.success('🏆 Goal Creator Achievement! +100 Shine Points');
+      } else if (totalGoals === 10) {
+        useAppStore.getState().addShinePoints(200);
+        toast.success('🌟 Goal Master Achievement! +200 Shine Points');
+      }
+      
     } catch (error) {
       console.error('Error adding goal:', error);
       toast.error('Failed to add goal');
@@ -869,7 +894,8 @@ export const useTaskStore = create((set, get) => ({
     try {
       const updateData = {
         ...updates,
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        subGoals: updates.subGoals?.filter(sg => sg.trim()) || updates.subGoals
       };
       await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), updateData);
       set((state) => ({
@@ -919,10 +945,23 @@ export const useTaskStore = create((set, get) => ({
       }));
       
       if (isCompleting) {
-        // Award XP for completing goal
-        const xpReward = goal.priority === 'high' ? 100 : goal.priority === 'medium' ? 50 : 25;
-        useAppStore.getState().addXP(xpReward);
-        toast.success(`🎉 Goal completed! +${xpReward} XP`);
+        // Award XP based on priority and complexity
+        const baseXP = goal.priority === 'high' ? 100 : goal.priority === 'medium' ? 50 : 25;
+        const subGoalBonus = (goal.subGoals?.length || 0) * 5;
+        const timeBonus = goal.timeEstimate > 60 ? 25 : goal.timeEstimate > 30 ? 15 : 5;
+        const totalXP = baseXP + subGoalBonus + timeBonus;
+        
+        useAppStore.getState().addXP(totalXP);
+        useAppStore.getState().addShinePoints(totalXP / 2);
+        toast.success(`🎉 Goal completed! +${totalXP} XP, +${Math.floor(totalXP/2)} Shine Points`);
+        
+        // Check for completion streaks and achievements
+        const completedGoals = goals.filter(g => g.completed).length + 1;
+        if (completedGoals % 5 === 0) {
+          const achievementXP = completedGoals * 10;
+          useAppStore.getState().addXP(achievementXP);
+          toast.success(`🏆 ${completedGoals} Goals Milestone! +${achievementXP} XP`);
+        }
       } else {
         toast.success('Goal marked as incomplete');
       }
@@ -935,13 +974,28 @@ export const useTaskStore = create((set, get) => ({
   updateGoalProgress: async (goalId, progress) => {
     try {
       const progressValue = Math.max(0, Math.min(100, progress));
+      const { goals } = get();
+      const goal = goals.find(g => g.id === goalId);
+      const oldProgress = goal?.progress || 0;
+      
       const updateData = {
         progress: progressValue,
         updatedAt: new Date(),
+        lastProgressUpdate: new Date(),
         // Auto-complete if progress reaches 100%
         ...(progressValue === 100 && {
           completed: true,
           completedAt: new Date()
+        }),
+        // Update milestones
+        ...(progressValue >= 25 && oldProgress < 25 && {
+          milestones: [...(goal?.milestones || []), { milestone: 25, achievedAt: new Date() }]
+        }),
+        ...(progressValue >= 50 && oldProgress < 50 && {
+          milestones: [...(goal?.milestones || []), { milestone: 50, achievedAt: new Date() }]
+        }),
+        ...(progressValue >= 75 && oldProgress < 75 && {
+          milestones: [...(goal?.milestones || []), { milestone: 75, achievedAt: new Date() }]
         })
       };
       
@@ -952,19 +1006,77 @@ export const useTaskStore = create((set, get) => ({
         )
       }));
       
-      if (progressValue === 100) {
-        const { goals } = get();
-        const goal = goals.find(g => g.id === goalId);
-        const xpReward = goal?.priority === 'high' ? 100 : goal?.priority === 'medium' ? 50 : 25;
-        useAppStore.getState().addXP(xpReward);
-        toast.success(`🎉 Goal completed! +${xpReward} XP`);
-      } else {
+      // XP rewards for milestones
+      if (progressValue >= 25 && oldProgress < 25) {
+        useAppStore.getState().addXP(10);
+        toast.success('🎯 25% Milestone! +10 XP');
+      }
+      if (progressValue >= 50 && oldProgress < 50) {
+        useAppStore.getState().addXP(20);
+        toast.success('🎯 Halfway There! +20 XP');
+      }
+      if (progressValue >= 75 && oldProgress < 75) {
+        useAppStore.getState().addXP(30);
+        toast.success('🎯 Almost Done! +30 XP');
+      }
+      
+      if (progressValue === 100 && oldProgress < 100) {
+        // Full completion rewards handled in toggleGoalComplete
+        const baseXP = goal?.priority === 'high' ? 100 : goal?.priority === 'medium' ? 50 : 25;
+        const subGoalBonus = (goal?.subGoals?.length || 0) * 5;
+        const timeBonus = (goal?.timeEstimate || 0) > 60 ? 25 : (goal?.timeEstimate || 0) > 30 ? 15 : 5;
+        const totalXP = baseXP + subGoalBonus + timeBonus;
+        
+        useAppStore.getState().addXP(totalXP);
+        useAppStore.getState().addShinePoints(Math.floor(totalXP / 2));
+        toast.success(`🎉 Goal completed! +${totalXP} XP, +${Math.floor(totalXP/2)} Shine Points`);
+      } else if (progressValue > oldProgress) {
         toast.success('Progress updated!');
       }
     } catch (error) {
       console.error('Error updating goal progress:', error);
       toast.error('Failed to update progress');
     }
+  },
+
+  // Get goal insights and analytics
+  getGoalInsights: () => {
+    const { goals } = get();
+    const completed = goals.filter(g => g.completed);
+    const active = goals.filter(g => !g.completed);
+    
+    const avgCompletionTime = completed.length > 0 
+      ? completed.reduce((sum, g) => {
+          if (!g.completedAt || !g.createdAt) return sum;
+          const created = g.createdAt?.toDate?.() || new Date(g.createdAt);
+          const completedDate = g.completedAt?.toDate?.() || new Date(g.completedAt);
+          const days = Math.ceil((completedDate - created) / (1000 * 60 * 60 * 24));
+          return sum + days;
+        }, 0) / completed.length
+      : 0;
+
+    const categoryStats = CATEGORIES.map(cat => ({
+      category: cat.value,
+      label: cat.label,
+      icon: cat.icon,
+      total: goals.filter(g => g.category === cat.value).length,
+      completed: goals.filter(g => g.category === cat.value && g.completed).length,
+      avgProgress: goals.filter(g => g.category === cat.value).reduce((sum, g) => sum + (g.progress || 0), 0) / Math.max(1, goals.filter(g => g.category === cat.value).length)
+    })).filter(stat => stat.total > 0);
+
+    return {
+      totalGoals: goals.length,
+      completionRate: goals.length > 0 ? (completed.length / goals.length * 100) : 0,
+      avgCompletionTime: Math.round(avgCompletionTime),
+      categoryStats,
+      currentStreak: 0, // Can implement streak calculation
+      longestStreak: 0, // Can implement streak calculation
+      upcomingDeadlines: active.filter(g => g.deadline).sort((a, b) => {
+        const aDate = new Date(a.deadline?.toDate?.() || a.deadline);
+        const bDate = new Date(b.deadline?.toDate?.() || b.deadline);
+        return aDate - bDate;
+      }).slice(0, 5)
+    };
   },
 
   loadGoals: async () => {
