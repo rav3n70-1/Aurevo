@@ -6,8 +6,6 @@ import App from './App'
 import './styles.css'
 import './i18n'
 
-console.log('main.jsx starting...')
-
 // Error boundary component
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -40,7 +38,6 @@ class ErrorBoundary extends React.Component {
 
 try {
   const root = createRoot(document.getElementById('root'))
-  console.log('Root created, rendering app...')
   
   root.render(
     <React.StrictMode>
@@ -52,7 +49,6 @@ try {
     </React.StrictMode>
   )
   
-  console.log('App rendered successfully')
 } catch (error) {
   console.error('Failed to render app:', error)
   document.getElementById('root').innerHTML = `

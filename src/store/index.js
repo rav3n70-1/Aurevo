@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, subscribeWithSelector } from 'zustand/middleware';
-import { doc, setDoc, getDoc, updateDoc, collection, addDoc, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, collection, addDoc, query, where, orderBy, getDocs, limit, deleteDoc } from 'firebase/firestore';
 import { db, COLLECTIONS } from '../lib/firebase';
 import toast from 'react-hot-toast';
 
@@ -312,7 +312,6 @@ export const useMoodStore = create((set, get) => ({
     
     set({ isLoading: true });
     try {
-      console.log('Loading mood data for user:', user.uid);
       
       // Try the optimized queries first (requires indexes)
       let moodQuery = query(
@@ -337,7 +336,6 @@ export const useMoodStore = create((set, get) => ({
           getDocs(journalQuery)
         ]);
       } catch (indexError) {
-        console.warn('Mood data indexes not available, falling back to simple queries:', indexError.message);
         
         // Fallback to simple queries without orderBy if indexes are missing
         moodQuery = query(
@@ -374,13 +372,10 @@ export const useMoodStore = create((set, get) => ({
         return bTime - aTime;
       });
       
-      console.log('Loaded mood data:', moodLogs.length, 'mood logs,', journalEntries.length, 'journal entries');
       set({ moodLogs, journalEntries });
       
     } catch (error) {
       console.error('Error loading mood data:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
       
       // Provide empty arrays as fallback
       set({ moodLogs: [], journalEntries: [] });
@@ -510,10 +505,9 @@ export const useWellnessStore = create((set, get) => ({
           steps: data.steps || 0,
           sleepHours: data.sleepHours || 0
         });
-      } else {
-        // No data for today, keep current values or reset
-        console.log('No wellness data found for today');
-      }
+              } else {
+          // No data for today, keep current values or reset
+        }
     } catch (error) {
       console.error('Error loading wellness data:', error);
       toast.error('Failed to load wellness data');
@@ -528,8 +522,6 @@ export const useWellnessStore = create((set, get) => ({
     
     set({ isLoading: true });
     try {
-      console.log('Loading wellness history for user:', user.uid, 'days:', days);
-      
       // Try the optimized query first (requires index)
       let q = query(
         collection(db, COLLECTIONS.WELLNESS_DATA),
@@ -542,8 +534,6 @@ export const useWellnessStore = create((set, get) => ({
       try {
         snapshot = await getDocs(q);
       } catch (indexError) {
-        console.warn('Composite index not available, falling back to simple query:', indexError.message);
-        
         // Fallback to simple query without orderBy if index is missing
         q = query(
           collection(db, COLLECTIONS.WELLNESS_DATA),
@@ -554,8 +544,6 @@ export const useWellnessStore = create((set, get) => ({
       }
       
       const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      console.log('Fetched wellness data:', rows.length, 'entries');
-      
       // Sort by timestamp in JavaScript if we couldn't sort in Firestore
       rows.sort((a, b) => {
         const aTime = a.timestamp?.toDate?.() || new Date(a.timestamp);
@@ -599,14 +587,10 @@ export const useWellnessStore = create((set, get) => ({
         }
       }
       
-      console.log('Processed wellness history:', result.length, 'days');
       set({ wellnessHistory: result });
       
     } catch (e) {
       console.error('Error loading wellness history:', e);
-      console.error('Error code:', e.code);
-      console.error('Error message:', e.message);
-      
       // Provide a fallback empty history instead of failing completely
       const result = [];
       const today = new Date();
@@ -778,9 +762,8 @@ export const useTaskStore = create((set, get) => ({
       let snapshot;
       try {
         snapshot = await getDocs(tasksQuery);
-      } catch (indexError) {
-        console.warn('Tasks index not available, falling back to simple query:', indexError.message);
-        // Fallback without orderBy
+              } catch (indexError) {
+          // Fallback without orderBy
         tasksQuery = query(
           collection(db, COLLECTIONS.TASKS),
           where('userId', '==', user.uid),
@@ -811,8 +794,6 @@ export const useTaskStore = create((set, get) => ({
     
     set({ isLoading: true });
     try {
-      console.log('Loading study sessions history for user:', user.uid, 'days:', days);
-      
       // Try the optimized query first (requires index)
       let q = query(
         collection(db, COLLECTIONS.STUDY_SESSIONS),
@@ -825,8 +806,6 @@ export const useTaskStore = create((set, get) => ({
       try {
         snapshot = await getDocs(q);
       } catch (indexError) {
-        console.warn('Study sessions index not available, falling back to simple query:', indexError.message);
-        
         // Fallback to simple query without orderBy if index is missing
         q = query(
           collection(db, COLLECTIONS.STUDY_SESSIONS),
@@ -837,8 +816,6 @@ export const useTaskStore = create((set, get) => ({
       }
       
       const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      console.log('Fetched study sessions:', rows.length, 'entries');
-      
       // Sort by timestamp in JavaScript if we couldn't sort in Firestore
       rows.sort((a, b) => {
         const aTime = a.timestamp?.toDate?.() || new Date(a.timestamp);
@@ -850,9 +827,6 @@ export const useTaskStore = create((set, get) => ({
       
     } catch (e) {
       console.error('Error loading study sessions history:', e);
-      console.error('Error code:', e.code);
-      console.error('Error message:', e.message);
-      
       // Provide empty array as fallback
       set({ studySessions: [] });
       toast.error('Study sessions loaded with limited data');
@@ -871,10 +845,14 @@ export const useTaskStore = create((set, get) => ({
         title: goalData.title,
         description: goalData.description || '',
         category: goalData.category || 'general',
+        priority: goalData.priority || 'medium',
         progress: Math.max(0, Math.min(100, goalData.progress ?? 0)),
         deadline: goalData.deadline || null,
+        timestamp: new Date(),
         createdAt: new Date(),
-        completed: false
+        updatedAt: new Date(),
+        completed: false,
+        completedAt: null
       };
       const docRef = await addDoc(collection(db, COLLECTIONS.GOALS), newGoal);
       set((state) => ({ goals: [{ id: docRef.id, ...newGoal }, ...state.goals] }));
@@ -882,6 +860,110 @@ export const useTaskStore = create((set, get) => ({
     } catch (error) {
       console.error('Error adding goal:', error);
       toast.error('Failed to add goal');
+    }
+  },
+
+  updateGoal: async (goalId, updates) => {
+    const { user } = useAppStore.getState();
+    if (!user) return;
+    try {
+      const updateData = {
+        ...updates,
+        updatedAt: new Date()
+      };
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), updateData);
+      set((state) => ({
+        goals: state.goals.map(goal =>
+          goal.id === goalId ? { ...goal, ...updateData } : goal
+        )
+      }));
+      toast.success('Goal updated successfully!');
+    } catch (error) {
+      console.error('Error updating goal:', error);
+      toast.error('Failed to update goal');
+    }
+  },
+
+  deleteGoal: async (goalId) => {
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.GOALS, goalId));
+      set((state) => ({
+        goals: state.goals.filter(goal => goal.id !== goalId)
+      }));
+      toast.success('Goal deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting goal:', error);
+      toast.error('Failed to delete goal');
+    }
+  },
+
+  toggleGoalComplete: async (goalId) => {
+    const { goals } = get();
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
+    
+    try {
+      const isCompleting = !goal.completed;
+      const updateData = {
+        completed: isCompleting,
+        completedAt: isCompleting ? new Date() : null,
+        progress: isCompleting ? 100 : goal.progress,
+        updatedAt: new Date()
+      };
+      
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), updateData);
+      set((state) => ({
+        goals: state.goals.map(g =>
+          g.id === goalId ? { ...g, ...updateData } : g
+        )
+      }));
+      
+      if (isCompleting) {
+        // Award XP for completing goal
+        const xpReward = goal.priority === 'high' ? 100 : goal.priority === 'medium' ? 50 : 25;
+        useAppStore.getState().addXP(xpReward);
+        toast.success(`🎉 Goal completed! +${xpReward} XP`);
+      } else {
+        toast.success('Goal marked as incomplete');
+      }
+    } catch (error) {
+      console.error('Error toggling goal completion:', error);
+      toast.error('Failed to update goal');
+    }
+  },
+
+  updateGoalProgress: async (goalId, progress) => {
+    try {
+      const progressValue = Math.max(0, Math.min(100, progress));
+      const updateData = {
+        progress: progressValue,
+        updatedAt: new Date(),
+        // Auto-complete if progress reaches 100%
+        ...(progressValue === 100 && {
+          completed: true,
+          completedAt: new Date()
+        })
+      };
+      
+      await updateDoc(doc(db, COLLECTIONS.GOALS, goalId), updateData);
+      set((state) => ({
+        goals: state.goals.map(goal =>
+          goal.id === goalId ? { ...goal, ...updateData } : goal
+        )
+      }));
+      
+      if (progressValue === 100) {
+        const { goals } = get();
+        const goal = goals.find(g => g.id === goalId);
+        const xpReward = goal?.priority === 'high' ? 100 : goal?.priority === 'medium' ? 50 : 25;
+        useAppStore.getState().addXP(xpReward);
+        toast.success(`🎉 Goal completed! +${xpReward} XP`);
+      } else {
+        toast.success('Progress updated!');
+      }
+    } catch (error) {
+      console.error('Error updating goal progress:', error);
+      toast.error('Failed to update progress');
     }
   },
 
@@ -901,9 +983,8 @@ export const useTaskStore = create((set, get) => ({
       let snapshot;
       try {
         snapshot = await getDocs(goalsQuery);
-      } catch (indexError) {
-        console.warn('Goals index not available, falling back to simple query:', indexError.message);
-        // Fallback without orderBy
+              } catch (indexError) {
+          // Fallback without orderBy
         goalsQuery = query(
           collection(db, COLLECTIONS.GOALS),
           where('userId', '==', user.uid),
@@ -915,8 +996,8 @@ export const useTaskStore = create((set, get) => ({
       const goals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       // Sort in JS if we couldn't sort in Firestore
       goals.sort((a, b) => {
-        const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt);
-        const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt);
+        const aTime = a.createdAt?.toDate?.() || a.timestamp?.toDate?.() || new Date(a.createdAt || a.timestamp);
+        const bTime = b.createdAt?.toDate?.() || b.timestamp?.toDate?.() || new Date(b.createdAt || b.timestamp);
         return bTime - aTime;
       });
       
@@ -1019,7 +1100,7 @@ export const useNotificationStore = create(
   onRehydrateStorage: () => {
     return (state, error) => {
       if (error) {
-        console.warn('Error rehydrating notifications:', error);
+        // Silent fail on notification rehydration error
         return;
       }
       if (state?.notifications) {

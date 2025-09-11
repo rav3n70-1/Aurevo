@@ -15,14 +15,6 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Debug: Log Firebase configuration (without sensitive data)
-console.log('Firebase Config Check:', {
-  hasApiKey: !!firebaseConfig.apiKey,
-  authDomain: firebaseConfig.authDomain,
-  projectId: firebaseConfig.projectId,
-  hasMissingEnvVars: Object.values(firebaseConfig).some(val => !val || val === 'undefined')
-});
-
 // Validate required environment variables
 const requiredEnvVars = [
   'VITE_FIREBASE_API_KEY',
@@ -43,7 +35,6 @@ if (missingVars.length > 0) {
 let app;
 try {
   app = initializeApp(firebaseConfig);
-  console.log('✅ Firebase initialized successfully');
 } catch (error) {
   console.error('❌ Firebase initialization failed:', error);
   throw error;
@@ -70,12 +61,6 @@ export const githubProvider = new GithubAuthProvider();
 // Set custom parameters for GitHub
 githubProvider.setCustomParameters({
   allow_signup: 'true'
-});
-
-// Debug: Log provider configuration
-console.log('Auth providers configured:', {
-  google: !!googleProvider,
-  github: !!githubProvider
 });
 
 // Firestore collections
