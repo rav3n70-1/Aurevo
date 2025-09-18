@@ -34,6 +34,7 @@ import { useAuth } from './hooks_useAuth'
 import { useAppStore, useNotificationStore, useMoodStore, useWellnessStore, useTaskStore } from './store'
 import { useEffect } from 'react'
 import './i18n'
+import Auth from './routes/Auth'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -82,6 +83,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={user ? <Navigate to="/dashboard" /> : <LandingPage />} />
           <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
+          <Route path="/auth/:provider" element={<Auth />} />
           <Route path="/onboarding" element={user ? <Onboarding /> : <Navigate to="/login" />} />
           <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/login" />} />
           <Route path="/mood" element={user ? <Mood /> : <Navigate to="/login" />} />

@@ -1,6 +1,6 @@
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, GithubAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, GithubAuthProvider, setPersistence, browserLocalPersistence, useDeviceLanguage } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
@@ -46,10 +46,19 @@ export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 
+// Configure auth defaults
+// Use device language for provider UI
+useDeviceLanguage(auth);
+// Persist session locally across tabs/reloads
+setPersistence(auth, browserLocalPersistence).catch((e) => {
+  console.error('Failed to set auth persistence:', e);
+});
+
 // Configure auth providers
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
-googleProvider.addScope('https://www.googleapis.com/auth/photoslibrary.readonly');
+// Removed advanced scopes that may require app verification and block sign-in
+// googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+// googleProvider.addScope('https://www.googleapis.com/auth/photoslibrary.readonly');
 
 // Set custom parameters for better UX
 googleProvider.setCustomParameters({

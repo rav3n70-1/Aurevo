@@ -6,6 +6,7 @@ import { Github, Chrome, Languages, Sun, Moon } from 'lucide-react'
 import { signInGoogle, signInGithub } from '../hooks_useAuth'
 import { useAppStore } from '../store'
 import Footer from '../components/Footer'
+import { useNavigate } from 'react-router-dom'
 
 const languageOptions = [
   { code: 'en', name: 'English', flag: '🇺🇸' },
@@ -21,11 +22,12 @@ export default function Login() {
   const { darkMode, toggleDarkMode, language, setLanguage } = useAppStore()
   const [isLoading, setIsLoading] = useState(false)
   const [showLanguages, setShowLanguages] = useState(false)
+  const navigate = useNavigate()
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
     try {
-      await signInGoogle()
+      navigate('/auth/google')
     } catch (error) {
       console.error('Login error:', error)
     } finally {
@@ -36,7 +38,7 @@ export default function Login() {
   const handleGithubSignIn = async () => {
     setIsLoading(true)
     try {
-      await signInGithub()
+      navigate('/auth/github')
     } catch (error) {
       console.error('Login error:', error)
     } finally {

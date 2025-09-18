@@ -36,6 +36,13 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// In dev, ensure no Service Worker controls localhost
+if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((r) => r.unregister())
+  })
+}
+
 try {
   const root = createRoot(document.getElementById('root'))
   

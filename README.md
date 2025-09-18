@@ -281,3 +281,20 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 **Aurevo** - Empowering your journey of growth, learning, and well-being. ✨
 
 *Ready to transform your daily habits into lasting achievements? Start your Aurevo journey today!*
+
+## Environment Setup
+
+Create a `.env.local` file in the project root with your Firebase config (values from Firebase Console > Project Settings > General):
+
+```
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+# Optional
+VITE_FIREBASE_MEASUREMENT_ID=G-XXXXXXX
+```
+
+Restart the dev server after adding envs.

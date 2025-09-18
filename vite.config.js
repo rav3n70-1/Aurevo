@@ -3,13 +3,15 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const isDev = process.env.NODE_ENV !== 'production'
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({
+    !isDev && VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg', 'robots.txt', 'apple-touch-icon.png'],
+      includeAssets: ['/icon.svg', 'robots.txt', 'apple-touch-icon.png'],
       manifest: {
         name: 'Aurevo - Smart Goal Tracking',
         short_name: 'Aurevo',
@@ -21,12 +23,12 @@ export default defineConfig({
         orientation: 'portrait',
         icons: [
           {
-            src: 'public/icon.svg',
+            src: '/icon.svg',
             sizes: '192x192',
             type: 'image/svg+xml'
           },
           {
-            src: 'public/icon.svg',
+            src: '/icon.svg',
             sizes: '512x512',
             type: 'image/svg+xml'
           }
@@ -39,24 +41,24 @@ export default defineConfig({
             short_name: 'New Goal',
             description: 'Create a new goal',
             url: '/goals?action=new',
-            icons: [{ src: 'public/icon.svg', sizes: '96x96' }]
+            icons: [{ src: '/icon.svg', sizes: '96x96' }]
           },
           {
             name: 'Check Habits',
             short_name: 'Habits',
             description: 'View your habits',
             url: '/goals?tab=habits',
-            icons: [{ src: 'public/icon.svg', sizes: '96x96' }]
+            icons: [{ src: '/icon.svg', sizes: '96x96' }]
           }
         ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff2}'],
+        navigateFallback: null,
+        navigateFallbackDenylist: [
+          new RegExp('/__/auth/handler')
+        ],
         runtimeCaching: [
-          {
-            urlPattern: ({ request }) => request.destination === 'document',
-            handler: 'CacheFirst'
-          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com/,
             handler: 'StaleWhileRevalidate',
@@ -74,10 +76,10 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: true
+        enabled: false
       }
     })
-  ],
+  ].filter(Boolean),
   build: {
     sourcemap: true,
     rollupOptions: {
